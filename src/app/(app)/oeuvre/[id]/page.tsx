@@ -11,6 +11,7 @@ import { LikeButton } from "@/components/LikeButton";
 import { ReviewEditor } from "@/components/ReviewEditor";
 import { ReviewContent } from "@/components/ReviewContent";
 import { JournalEntryForm } from "@/components/JournalEntryForm";
+import { DeleteWorkButton } from "@/components/DeleteWorkButton";
 import { EpisodeTracker } from "@/components/EpisodeTracker";
 import { TomeTracker } from "@/components/TomeTracker";
 import { ReadingProgressWidget } from "@/components/ReadingProgressWidget";
@@ -210,6 +211,9 @@ export default async function OeuvrePage({
               <Button variant="secondary" size="sm" disabled title="Bientôt (lot 4)">
                 Proposer une correction
               </Button>
+            )}
+            {isAdmin(user) && (
+              <DeleteWorkButton workId={work.id} title={work.titleFr} />
             )}
           </div>
         </div>
