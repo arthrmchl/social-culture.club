@@ -23,7 +23,11 @@ Voir `README.md` pour la présentation et le démarrage.
 | `npm run test:e2e` | Playwright (serveur dev requis sur `:3000`) |
 | `npm run db:migrate` | `prisma migrate dev` |
 | `npm run db:seed` | Admin + invitation + genres |
-| `npx tsx scripts/verify.ts` | Vérification de la couche données contre la vraie base |
+| `npm run verify` | Vérification de la couche données contre la vraie base |
+| `npm run backup` / `restore` | Sauvegarde et restauration (base + visuels) |
+
+`npm run verify` passe `--conditions=react-server` : le script importe des
+modules `server-only`, qui lèvent une erreur sans cette condition.
 
 ## Conventions
 
@@ -52,10 +56,51 @@ Voir `README.md` pour la présentation et le démarrage.
   une valeur serveur : ajuster l'état pendant le rendu (état « précédent »), pas
   via `useEffect` (règle ESLint `react-hooks/set-state-in-effect`).
 - **UI en français**, mobile d'abord (N1) ; thème clair/sombre via variables CSS
-  (`src/app/globals.css`).
+  (`src/app/globals.css`). La barre de navigation basse est **pleine** (6 entrées) :
+  une nouvelle page de premier niveau s'ajoute à la barre du bureau et se rend
+  accessible au mobile depuis `/profil`, comme `/import` et `/donnees`.
+
+## Imports et export (lot 2)
+
+- **Un adaptateur ne fait qu'une chose** (`src/lib/import/adapters/`) :
+  transformer des fichiers texte en `ImportedEvent[]`. Tout le reste —
+  rapprochement, création de fiches, journal, idempotence — est mutualisé et
+  ignore la source.
+- **Les noms de colonnes ne sont jamais codés en dur** ailleurs que dans la
+  table `COLUMNS` en tête de chaque adaptateur : c'est le point unique de
+  correction quand un export tiers change. Une colonne manquante produit un
+  `ImportWarning` en français, **jamais** une exception (R5).
+- **Idempotence (I6)** : chaque entrée importée porte une `importKey` stable
+  (`buildImportKey`, `src/lib/import/dedup.ts`), adossée à
+  `@@unique([userId, importKey])` sur `JournalEntry`. Les écritures de journal
+  passent par `createMany({ skipDuplicates: true })`, le reste par des `upsert` —
+  rejouer un lot ne doit jamais rien dupliquer. C'est la propriété centrale du
+  lot : toute modification du pipeline doit être revalidée par `npm run verify`,
+  dont la section lot 2 réimporte le même lot et exige 0 création.
+- **Rapprochement** : `findImportCandidates` fait **une** requête pg_trgm par
+  paquet de cibles — ne jamais appeler `findDuplicateWorks` en boucle. Ne jamais
+  appeler `set_limit()` : le seuil s'applique à la connexion, partagée.
+- **Application** : par paquets de 25, **une transaction par cible** avec
+  `{ timeout: 30_000 }` (le défaut de 5 s ne suffit pas). `revalidatePath`
+  seulement à la clôture du lot, jamais par paquet ; caches (`recomputeViewings`
+  et compagnie) une fois par cible, jamais par ligne.
+- **L'import n'écrase rien** : une note, une critique ou un statut déjà saisis
+  sont conservés et le conflit est signalé dans le rapport.
+- **Fiches importées** : `coverImageId = null` + `needsCompletion = true` ; le
+  visuel de substitution est calculé à l'affichage (`src/lib/placeholder.ts`),
+  jamais stocké. L'obligation de visuel (D31) ne vaut que pour la création
+  manuelle.
+- **Téléversement** par Route Handler (`/api/import/upload`) et non par server
+  action : la limite de corps de 1 Mo ne convient pas à un export complet.
+- **Export** (`src/lib/export/`) : les sous-unités sont désignées par leur
+  **numéro**, pas par un identifiant interne, et l'aller-retour écriture →
+  lecture est testé avec le parseur d'import.
 
 ## Lotissement
 
-Lot 0 (fondations) et lot 1 (suivi) sont livrés. À venir : imports/export (lot 2),
-bibliothèque riche — listes, tags, favoris, citations, objectifs, éditions (lot 3),
-social (lot 4), statistiques/rétrospective/PWA (lot 5).
+Lots 0 (fondations), 1 (suivi) et 2 (reprise de l'historique) sont livrés.
+À venir : bibliothèque riche — listes, tags, favoris, citations, objectifs,
+éditions (lot 3), social (lot 4), statistiques/rétrospective/PWA (lot 5).
+
+Les fichiers de listes des exports Letterboxd sont **conservés bruts** dans
+`ImportFile` (`parsed = false`) : le lot 3 les rejouera sans réimport.
