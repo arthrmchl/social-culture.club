@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: scc-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: scc
+      POSTGRES_PASSWORD: scc
+      POSTGRES_DB: scc
+    ports:
+      - "5432:5432"
+    volumes:
+      - scc-pgdata:/var/lib/postgresql/data
+
+volumes:
+  scc-pgdata:

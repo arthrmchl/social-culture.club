@@ -1,0 +1,282 @@
+// social-culture.club — modèle de données unifié (lot 0)
+// Catalogue interne partagé (D29), sans référentiel externe (D6).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────────
+// Authentification (tables gérées par better-auth)
+// ─────────────────────────────────────────────────────────────
+
+model User {
+  id            String   @id
+  name          String // nom d'affichage
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String? // URL de l'avatar
+  bio           String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // plugin username
+  username        String? @unique
+  displayUsername String?
+
+  // plugin admin
+  role       String?   @default("user") // "user" | "admin"
+  banned     Boolean   @default(false)
+  banReason  String?
+  banExpires DateTime?
+
+  sessions Session[]
+  accounts Account[]
+
+  // relations applicatives
+  worksCreated    Work[]       @relation("WorkCreatedBy")
+  imagesUploaded  Image[]      @relation("ImageUploadedBy")
+  invitationsSent Invitation[] @relation("InvitationInvitedBy")
+  invitationUsed  Invitation[] @relation("InvitationUsedBy")
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  impersonatedBy String? // plugin admin
+
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("verification")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Invitations (inscription en cercle privé — D24)
+// ─────────────────────────────────────────────────────────────
+
+model Invitation {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  email       String? // optionnel : invitation nominative
+  invitedById String
+  invitedBy   User      @relation("InvitationInvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
+  usedById    String?
+  usedBy      User?     @relation("InvitationUsedBy", fields: [usedById], references: [id], onDelete: SetNull)
+  usedAt      DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([invitedById])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Catalogue d'œuvres (D6, D29, D30, D31)
+// ─────────────────────────────────────────────────────────────
+
+enum WorkType {
+  FILM
+  SERIES
+  ANIME
+  BOOK
+  BD_SERIES
+  MANGA_SERIES
+  ONE_SHOT
+}
+
+model Work {
+  id              String   @id @default(cuid())
+  type            WorkType
+  titleFr         String
+  titleOriginal   String?
+  titleNormalized String // minuscule + sans accents, pour dédup et recherche pg_trgm
+  year            Int
+  synopsis        String?
+  durationMinutes Int? // films / épisodes
+  pageCount       Int? // livres / one-shots
+  isbn            String? // champ libre saisi (D6 : jamais utilisé pour un lookup externe)
+  metadata        Json     @default("{}") // ex. { "format": "TV" } pour les animés
+
+  coverImageId String?
+  coverImage   Image?  @relation("WorkCover", fields: [coverImageId], references: [id], onDelete: SetNull)
+
+  createdById String
+  createdBy   User     @relation("WorkCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  genres   WorkGenre[]
+  creators WorkCreator[]
+  seasons  Season[]
+  tomes    Tome[]
+  editions Edition[]
+
+  @@index([type])
+  @@index([createdById])
+  @@index([year])
+}
+
+model Genre {
+  id    String      @id @default(cuid())
+  name  String      @unique
+  slug  String      @unique
+  works WorkGenre[]
+}
+
+model WorkGenre {
+  workId  String
+  work    Work   @relation(fields: [workId], references: [id], onDelete: Cascade)
+  genreId String
+  genre   Genre  @relation(fields: [genreId], references: [id], onDelete: Cascade)
+
+  @@id([workId, genreId])
+  @@index([genreId])
+}
+
+model Person {
+  id             String        @id @default(cuid())
+  name           String
+  nameNormalized String        @unique
+  works          WorkCreator[]
+}
+
+model WorkCreator {
+  id       String  @id @default(cuid())
+  workId   String
+  work     Work    @relation(fields: [workId], references: [id], onDelete: Cascade)
+  personId String
+  person   Person  @relation(fields: [personId], references: [id], onDelete: Cascade)
+  role     String? // réalisateur, auteur, scénariste, dessinateur…
+
+  @@unique([workId, personId, role])
+  @@index([personId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Sous-unités : saisons/épisodes (séries, animés), tomes (BD, mangas — D7)
+// ─────────────────────────────────────────────────────────────
+
+model Season {
+  id       String    @id @default(cuid())
+  workId   String
+  work     Work      @relation(fields: [workId], references: [id], onDelete: Cascade)
+  number   Int
+  title    String?
+  episodes Episode[]
+
+  @@unique([workId, number])
+}
+
+model Episode {
+  id              String    @id @default(cuid())
+  seasonId        String
+  season          Season    @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  number          Int
+  title           String?
+  durationMinutes Int?
+  airDate         DateTime? // indicatif uniquement (D15)
+
+  @@unique([seasonId, number])
+}
+
+model Tome {
+  id           String    @id @default(cuid())
+  workId       String
+  work         Work      @relation(fields: [workId], references: [id], onDelete: Cascade)
+  number       Int
+  title        String?
+  pageCount    Int?
+  coverImageId String?
+  coverImage   Image?    @relation("TomeCover", fields: [coverImageId], references: [id], onDelete: SetNull)
+  editions     Edition[]
+
+  @@unique([workId, number])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Éditions (D8) — modèle complet prêt dès le lot 0, UI au lot 3
+// ─────────────────────────────────────────────────────────────
+
+model Edition {
+  id        String  @id @default(cuid())
+  workId    String?
+  work      Work?   @relation(fields: [workId], references: [id], onDelete: Cascade)
+  tomeId    String?
+  tome      Tome?   @relation(fields: [tomeId], references: [id], onDelete: Cascade)
+  isbn      String?
+  pageCount Int?
+  publisher String?
+  format    String? // poche, broché, numérique, intégrale…
+  isDefault Boolean @default(false)
+
+  // Intégrale : étendue de tomes couverts (leur lecture les marque comme lus — lot 1/3)
+  coversTomeFrom Int?
+  coversTomeTo   Int?
+
+  coverImageId String?
+  coverImage   Image?  @relation("EditionCover", fields: [coverImageId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([workId])
+  @@index([tomeId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Visuels téléversés (stockés sur disque, servis via /api/uploads/[id])
+// ─────────────────────────────────────────────────────────────
+
+model Image {
+  id           String   @id @default(cuid())
+  path         String // chemin relatif dans UPLOADS_DIR
+  width        Int?
+  height       Int?
+  uploadedById String?
+  uploadedBy   User?    @relation("ImageUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+
+  coverForWorks    Work[]    @relation("WorkCover")
+  coverForTomes    Tome[]    @relation("TomeCover")
+  coverForEditions Edition[] @relation("EditionCover")
+}

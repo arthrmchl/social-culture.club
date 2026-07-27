@@ -12,7 +12,16 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Client Prisma généré.
+    "src/generated/**",
   ]),
+  {
+    rules: {
+      // L'interface est en français : les apostrophes typographiques dans le
+      // JSX sont volontaires et lisibles telles quelles.
+      "react/no-unescaped-entities": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

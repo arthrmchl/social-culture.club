@@ -1,26 +1,60 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ─── Thème (sombre par défaut — N7) ───────────────────────── */
+@theme {
+  --color-background: #0b0b0f;
+  --color-surface: #16161d;
+  --color-elevated: #1e1e27;
+  --color-border: #2a2a35;
+  --color-foreground: #ececef;
+  --color-muted: #9a9aa6;
+  --color-accent: #f5b544;
+  --color-accent-foreground: #1a1204;
+  --color-danger: #f26161;
+  --color-star: #f5b544;
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --radius: 0.75rem;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* Thème clair : via préférence système ou bascule manuelle. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --color-background: #faf9f7;
+    --color-surface: #ffffff;
+    --color-elevated: #ffffff;
+    --color-border: #e4e2dd;
+    --color-foreground: #1a1a1f;
+    --color-muted: #6b6b76;
+    --color-accent: #c78a12;
+    --color-accent-foreground: #ffffff;
+    --color-danger: #c53030;
   }
 }
 
+:root[data-theme="light"] {
+  --color-background: #faf9f7;
+  --color-surface: #ffffff;
+  --color-elevated: #ffffff;
+  --color-border: #e4e2dd;
+  --color-foreground: #1a1a1f;
+  --color-muted: #6b6b76;
+  --color-accent: #c78a12;
+  --color-accent-foreground: #ffffff;
+  --color-danger: #c53030;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+}
+
+/* Focus visible cohérent pour la navigation clavier (N7). */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
