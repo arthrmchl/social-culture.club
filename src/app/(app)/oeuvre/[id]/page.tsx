@@ -2,9 +2,30 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser, isAdmin } from "@/lib/session";
-import { MEDIA } from "@/lib/media";
+import { MEDIA, usesEpisodes, usesTomes, usesPages } from "@/lib/media";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { StatusSelect } from "@/components/StatusSelect";
+import { RatingStars } from "@/components/RatingStars";
+import { LikeButton } from "@/components/LikeButton";
+import { ReviewEditor } from "@/components/ReviewEditor";
+import { ReviewContent } from "@/components/ReviewContent";
+import { JournalEntryForm } from "@/components/JournalEntryForm";
+import { EpisodeTracker } from "@/components/EpisodeTracker";
+import { TomeTracker } from "@/components/TomeTracker";
+import { ReadingProgressWidget } from "@/components/ReadingProgressWidget";
+import {
+  JournalEntryCard,
+  type JournalEntryCardData,
+} from "@/components/JournalEntryCard";
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
+      {children}
+    </h2>
+  );
+}
 
 export default async function OeuvrePage({
   params,
@@ -21,7 +42,7 @@ export default async function OeuvrePage({
       creators: { include: { person: true } },
       seasons: {
         orderBy: { number: "asc" },
-        include: { _count: { select: { episodes: true } } },
+        include: { episodes: { orderBy: { number: "asc" } } },
       },
       tomes: { orderBy: { number: "asc" } },
       editions: { orderBy: { createdAt: "asc" } },
@@ -30,13 +51,97 @@ export default async function OeuvrePage({
   });
   if (!work) notFound();
 
+  const [userWork, watches, tomeProgress, userSeasons, entries, contextRows] =
+    await Promise.all([
+      db.userWork.findUnique({
+        where: { userId_workId: { userId: user.id, workId: id } },
+      }),
+      db.episodeWatch.findMany({
+        where: { userId: user.id, episode: { season: { workId: id } } },
+        select: { episodeId: true },
+      }),
+      db.tomeProgress.findMany({
+        where: { userId: user.id, tome: { workId: id } },
+        select: { tomeId: true, state: true },
+      }),
+      db.userSeason.findMany({
+        where: { userId: user.id, season: { workId: id } },
+      }),
+      db.journalEntry.findMany({
+        where: { userId: user.id, workId: id },
+        orderBy: [
+          { loggedAt: { sort: "desc", nulls: "last" } },
+          { createdAt: "desc" },
+        ],
+        include: {
+          season: { select: { number: true } },
+          episode: { select: { number: true } },
+          tome: { select: { number: true } },
+        },
+      }),
+      db.journalEntry.findMany({
+        where: { userId: user.id, context: { not: null } },
+        select: { context: true },
+        distinct: ["context"],
+        take: 20,
+      }),
+    ]);
+
   const media = MEDIA[work.type];
   const canEdit = work.createdById === user.id || isAdmin(user);
   const cover = work.coverImageId ? `/api/uploads/${work.coverImageId}` : null;
-  const totalEpisodes = work.seasons.reduce(
-    (n, s) => n + s._count.episodes,
-    0,
-  );
+  const totalEpisodes = work.seasons.reduce((n, s) => n + s.episodes.length, 0);
+
+  const watchedSet = new Set(watches.map((w) => w.episodeId));
+  const tomeStateMap = new Map(tomeProgress.map((t) => [t.tomeId, t.state]));
+  const userSeasonMap = new Map(userSeasons.map((s) => [s.seasonId, s]));
+  const contextSuggestions = contextRows
+    .map((c) => c.context)
+    .filter((c): c is string => !!c);
+
+  const seasonItems = work.seasons.map((s) => ({
+    id: s.id,
+    number: s.number,
+    title: s.title,
+    episodes: s.episodes.map((e) => ({
+      id: e.id,
+      number: e.number,
+      title: e.title,
+      watched: watchedSet.has(e.id),
+    })),
+    rating: userSeasonMap.get(s.id)?.rating ?? null,
+    reviewText: userSeasonMap.get(s.id)?.reviewText ?? null,
+    reviewHasSpoiler: userSeasonMap.get(s.id)?.reviewHasSpoiler ?? false,
+  }));
+
+  const tomeItems = work.tomes.map((t) => ({
+    id: t.id,
+    number: t.number,
+    state: tomeStateMap.get(t.id) ?? null,
+  }));
+
+  const journalEntries: JournalEntryCardData[] = entries.map((e) => ({
+    id: e.id,
+    loggedAt: e.loggedAt,
+    datePrecision: e.datePrecision,
+    rating: e.rating,
+    reviewText: e.reviewText,
+    reviewHasSpoiler: e.reviewHasSpoiler,
+    isRewatch: e.isRewatch,
+    isSeasonBatch: e.isSeasonBatch,
+    context: e.context,
+    season: e.season,
+    episode: e.episode,
+    tome: e.tome,
+    work: {
+      id: work.id,
+      type: work.type,
+      titleFr: work.titleFr,
+      coverImageId: work.coverImageId,
+    },
+  }));
+
+  const viewingCount = entries.length;
 
   return (
     <div className="flex flex-col gap-8">
@@ -112,60 +217,109 @@ export default async function OeuvrePage({
 
       {work.synopsis && (
         <section>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
-            Synopsis
-          </h2>
+          <SectionTitle>Synopsis</SectionTitle>
           <p className="whitespace-pre-line text-sm leading-relaxed">
             {work.synopsis}
           </p>
         </section>
       )}
 
-      {/* Sous-unités */}
-      {work.seasons.length > 0 && (
+      {/* Ma relation à l'œuvre (lot 1) */}
+      <section>
+        <SectionTitle>Ma relation à l'œuvre</SectionTitle>
+        <Card className="flex flex-col gap-5 p-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="w-48">
+              <StatusSelect
+                workId={work.id}
+                type={work.type}
+                state={userWork?.state ?? null}
+              />
+            </div>
+            <RatingStars
+              target={{ kind: "work", id: work.id }}
+              score={userWork?.currentRating ?? null}
+            />
+            <LikeButton workId={work.id} liked={userWork?.liked ?? false} />
+          </div>
+
+          {viewingCount > 0 && (
+            <p className="text-sm text-muted">
+              {usesPages(work.type) || usesTomes(work.type)
+                ? `${viewingCount} lecture${viewingCount > 1 ? "s" : ""} au journal`
+                : `${viewingCount} visionnage${viewingCount > 1 ? "s" : ""} au journal`}
+            </p>
+          )}
+
+          {/* Critique directe à l'œuvre (S7) */}
+          <div className="flex flex-col gap-2">
+            {userWork?.reviewText && (
+              <ReviewContent
+                text={userWork.reviewText}
+                hasSpoiler={userWork.reviewHasSpoiler}
+              />
+            )}
+            <ReviewEditor
+              target={{ kind: "work", id: work.id }}
+              text={userWork?.reviewText ?? null}
+              hasSpoiler={userWork?.reviewHasSpoiler ?? false}
+            />
+          </div>
+
+          <JournalEntryForm
+            workId={work.id}
+            contextSuggestions={contextSuggestions}
+          />
+        </Card>
+      </section>
+
+      {/* Progression fine */}
+      {usesEpisodes(work.type) && work.seasons.length > 0 && (
         <section>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
-            {work.seasons.length} saison{work.seasons.length > 1 ? "s" : ""} ·{" "}
-            {totalEpisodes} épisode{totalEpisodes > 1 ? "s" : ""}
-          </h2>
-          <Card className="divide-y divide-border">
-            {work.seasons.map((s) => (
-              <div key={s.id} className="flex justify-between p-3 text-sm">
-                <span>Saison {s.number}</span>
-                <span className="text-muted">{s._count.episodes} épisodes</span>
-              </div>
-            ))}
+          <SectionTitle>
+            Progression — {work.seasons.length} saison
+            {work.seasons.length > 1 ? "s" : ""} · {totalEpisodes} épisode
+            {totalEpisodes > 1 ? "s" : ""}
+          </SectionTitle>
+          <EpisodeTracker workId={work.id} seasons={seasonItems} />
+        </section>
+      )}
+
+      {usesTomes(work.type) && work.tomes.length > 0 && (
+        <section>
+          <SectionTitle>Progression — tomes</SectionTitle>
+          <TomeTracker tomes={tomeItems} />
+        </section>
+      )}
+
+      {usesPages(work.type) && (
+        <section>
+          <SectionTitle>Progression de lecture</SectionTitle>
+          <Card className="p-4">
+            <ReadingProgressWidget
+              workId={work.id}
+              currentPage={userWork?.currentPage ?? null}
+              currentPercent={userWork?.progressPercent ?? null}
+              pageCount={work.pageCount ?? null}
+            />
           </Card>
         </section>
       )}
 
-      {work.tomes.length > 0 && (
-        <section>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
-            {work.tomes.length} tome{work.tomes.length > 1 ? "s" : ""}
-          </h2>
-          <div className="flex flex-wrap gap-2">
-            {work.tomes.map((t) => (
-              <span
-                key={t.id}
-                className="rounded-md border border-border px-2 py-1 text-xs"
-              >
-                T{t.number}
-              </span>
+      {/* Journal de l'œuvre (S4) */}
+      <section>
+        <SectionTitle>Journal</SectionTitle>
+        {journalEntries.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            {journalEntries.map((e) => (
+              <JournalEntryCard key={e.id} entry={e} showWork={false} />
             ))}
           </div>
-        </section>
-      )}
-
-      {/* Ma relation à l'œuvre — livrée au lot 1 */}
-      <section>
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
-          Ma relation à l'œuvre
-        </h2>
-        <Card className="p-4 text-sm text-muted">
-          Journal, note, j'aime, critiques, statut et progression arrivent au
-          lot 1.
-        </Card>
+        ) : (
+          <Card className="p-4 text-sm text-muted">
+            Aucune entrée pour l'instant. Utilisez « Ajouter au journal ».
+          </Card>
+        )}
       </section>
 
       <p className="text-xs text-muted">

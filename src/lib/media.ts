@@ -38,3 +38,18 @@ export function mediaLabel(type: WorkType): string {
 export function isWorkType(value: string): value is WorkType {
   return value in MEDIA;
 }
+
+/** Média suivi à l'épisode (séries, animés) — progression T1/T4. */
+export function usesEpisodes(type: WorkType): boolean {
+  return MEDIA[type].subUnit === "episodes";
+}
+
+/** Média suivi au tome (BD, mangas) — progression L4. */
+export function usesTomes(type: WorkType): boolean {
+  return MEDIA[type].subUnit === "tomes";
+}
+
+/** Média suivi à la page (livres, one-shots) — progression L2. */
+export function usesPages(type: WorkType): boolean {
+  return type === "BOOK" || type === "ONE_SHOT";
+}
