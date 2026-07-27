@@ -10,7 +10,9 @@ import type { ImportCandidate } from "@/lib/import/match";
  * quand aucun candidat proposé ne convient. S'appuie sur la recherche floue
  * existante (S1) plutôt que d'en réinventer une.
  */
-export async function searchCatalogue(query: string): Promise<ImportCandidate[]> {
+export async function searchCatalogue(
+  query: string,
+): Promise<ImportCandidate[]> {
   await requireUser();
   const q = query.trim();
   if (q.length < 2) return [];

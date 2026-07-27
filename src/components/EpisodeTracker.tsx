@@ -104,7 +104,12 @@ export function EpisodeTracker({
             }}
           />
         </div>
-        <Button size="sm" variant="secondary" disabled={pending} onClick={submitUpTo}>
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={pending}
+          onClick={submitUpTo}
+        >
           Marquer
         </Button>
       </div>
@@ -115,7 +120,10 @@ export function EpisodeTracker({
         const allWatched =
           season.episodes.length > 0 && watched === season.episodes.length;
         return (
-          <details key={season.id} className="rounded-[var(--radius)] border border-border">
+          <details
+            key={season.id}
+            className="rounded-[var(--radius)] border border-border"
+          >
             <summary className="flex cursor-pointer select-none items-center justify-between gap-2 p-3 text-sm">
               <span className="font-medium">
                 Saison {season.number}

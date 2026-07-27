@@ -28,7 +28,10 @@ export type JournalEntryInput = z.input<typeof entrySchema>;
 function resolveDate(
   loggedAt: string | null | undefined,
   precision: "DAY" | "MONTH" | "YEAR" | "UNKNOWN" | undefined,
-): { loggedAt: Date | null; datePrecision: "DAY" | "MONTH" | "YEAR" | "UNKNOWN" } {
+): {
+  loggedAt: Date | null;
+  datePrecision: "DAY" | "MONTH" | "YEAR" | "UNKNOWN";
+} {
   if (loggedAt === null) return { loggedAt: null, datePrecision: "UNKNOWN" };
   if (loggedAt === undefined)
     return { loggedAt: new Date(), datePrecision: precision ?? "DAY" };
@@ -89,7 +92,9 @@ export async function createJournalEntry(
       where: { userId_workId: { userId: user.id, workId: d.workId } },
       update: {
         ...(rating != null ? { currentRating: rating } : {}),
-        ...(filmDone ? { state: "COMPLETED", finishedAt: loggedAt ?? new Date() } : {}),
+        ...(filmDone
+          ? { state: "COMPLETED", finishedAt: loggedAt ?? new Date() }
+          : {}),
       },
       create: {
         userId: user.id,
@@ -131,13 +136,15 @@ export async function editJournalEntry(
   }
 
   const rating =
-    d.stars === undefined ? undefined : d.stars === null ? null : starsToScore(d.stars);
+    d.stars === undefined
+      ? undefined
+      : d.stars === null
+        ? null
+        : starsToScore(d.stars);
   const review =
     d.reviewText === undefined ? undefined : d.reviewText.trim() || null;
   const datePatch =
-    d.loggedAt === undefined
-      ? {}
-      : resolveDate(d.loggedAt, d.datePrecision);
+    d.loggedAt === undefined ? {} : resolveDate(d.loggedAt, d.datePrecision);
 
   await db.journalEntry.update({
     where: { id: entryId },
@@ -145,7 +152,10 @@ export async function editJournalEntry(
       ...(rating === undefined ? {} : { rating }),
       ...(review === undefined
         ? {}
-        : { reviewText: review, reviewHasSpoiler: review ? !!d.reviewHasSpoiler : false }),
+        : {
+            reviewText: review,
+            reviewHasSpoiler: review ? !!d.reviewHasSpoiler : false,
+          }),
       ...(d.isRewatch === undefined ? {} : { isRewatch: d.isRewatch }),
       ...(d.context === undefined ? {} : { context: d.context.trim() || null }),
       ...datePatch,

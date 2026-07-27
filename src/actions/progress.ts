@@ -77,7 +77,11 @@ export async function markSeasonWatched(
   await db.$transaction(async (tx) => {
     if (watched && episodeIds.length > 0) {
       const when =
-        watchedAt === null ? null : watchedAt ? new Date(watchedAt) : new Date();
+        watchedAt === null
+          ? null
+          : watchedAt
+            ? new Date(watchedAt)
+            : new Date();
 
       const entry = await tx.journalEntry.create({
         data: {
@@ -137,7 +141,8 @@ export async function markUpTo(
     episodeNumber: e.number,
   }));
   const targetIds = episodesUpTo(refs, target);
-  if (targetIds.length === 0) return { error: "Aucun épisode jusqu'à cette cible." };
+  if (targetIds.length === 0)
+    return { error: "Aucun épisode jusqu'à cette cible." };
 
   await db.$transaction(async (tx) => {
     const already = await tx.episodeWatch.findMany({

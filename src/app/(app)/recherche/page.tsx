@@ -27,11 +27,7 @@ export default async function RecherchePage({
     <div className="flex flex-col gap-5">
       <h1 className="text-xl font-semibold">Recherche</h1>
       <SearchBox />
-      <MediaFilter
-        basePath="/recherche"
-        current={workType}
-        params={{ q }}
-      />
+      <MediaFilter basePath="/recherche" current={workType} params={{ q }} />
 
       {q ? (
         results.length > 0 ? (

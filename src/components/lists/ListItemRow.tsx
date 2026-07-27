@@ -2,11 +2,7 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import {
-  moveListItem,
-  removeFromList,
-  setListItemNote,
-} from "@/actions/list";
+import { moveListItem, removeFromList, setListItemNote } from "@/actions/list";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Field";

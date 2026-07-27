@@ -18,9 +18,7 @@ export type ListCardData = {
 
 /** Vignette d'une liste dans `/listes` et sur l'accueil. */
 export function ListCard({ list }: { list: ListCardData }) {
-  const cover = list.coverImageId
-    ? `/api/uploads/${list.coverImageId}`
-    : null;
+  const cover = list.coverImageId ? `/api/uploads/${list.coverImageId}` : null;
 
   return (
     <Link href={`/listes/${list.slug}`} className="group">
@@ -49,7 +47,9 @@ export function ListCard({ list }: { list: ListCardData }) {
             {list.isPinned && <span aria-label="Épinglée">📌 </span>}
             {list.title}
           </p>
-          <p className="text-xs text-muted">{describeList(list.count, list.isRanked)}</p>
+          <p className="text-xs text-muted">
+            {describeList(list.count, list.isRanked)}
+          </p>
           {list.description && (
             <p className="mt-1 line-clamp-2 text-xs text-muted">
               {list.description}

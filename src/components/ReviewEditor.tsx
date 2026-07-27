@@ -7,11 +7,7 @@ import { Textarea } from "./ui/Field";
 import { Button } from "./ui/Button";
 import type { RatingTarget } from "./RatingStars";
 
-async function save(
-  target: RatingTarget,
-  text: string,
-  spoiler: boolean,
-) {
+async function save(target: RatingTarget, text: string, spoiler: boolean) {
   return target.kind === "work"
     ? setWorkReview(target.id, { text, spoiler })
     : setSeasonReview(target.id, { text, spoiler });

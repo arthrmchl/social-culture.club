@@ -51,9 +51,7 @@ export function BatchActions({
         type="checkbox"
         checked={Boolean(draft[key])}
         disabled={locked}
-        onChange={(e) =>
-          setDraft((d) => ({ ...d, [key]: e.target.checked }))
-        }
+        onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.checked }))}
         className="size-4 accent-[var(--color-accent)]"
       />
       {OPTION_LABELS[key]}
@@ -65,8 +63,8 @@ export function BatchActions({
       <div>
         <h2 className="text-sm font-semibold">Options d&apos;analyse</h2>
         <p className="text-xs text-muted">
-          Modifier une option relance l&apos;analyse ; rien n&apos;est écrit dans
-          votre suivi avant l&apos;application.
+          Modifier une option relance l&apos;analyse ; rien n&apos;est écrit
+          dans votre suivi avant l&apos;application.
         </p>
       </div>
 
@@ -149,7 +147,12 @@ export function BatchActions({
           variant="danger"
           disabled={pending}
           onClick={() => {
-            if (!confirm("Supprimer ce lot d'import ? Les œuvres déjà créées sont conservées.")) return;
+            if (
+              !confirm(
+                "Supprimer ce lot d'import ? Les œuvres déjà créées sont conservées.",
+              )
+            )
+              return;
             startTransition(async () => {
               const res = await deleteImportBatch(batchId);
               if ("error" in res) setError(res.error);

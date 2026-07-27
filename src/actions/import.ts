@@ -64,7 +64,9 @@ export async function analyzeImportBatch(
   const { batch } = owned;
 
   if (batch.status === "APPLYING") {
-    return { error: "Application en cours : impossible de relancer l'analyse." };
+    return {
+      error: "Application en cours : impossible de relancer l'analyse.",
+    };
   }
   if (batch.status === "APPLIED") {
     return { error: "Ce lot a déjà été appliqué." };
@@ -319,12 +321,15 @@ export type ApplyProgress =
  * transaction par cible — une œuvre n'est jamais créée à moitié, et une cible
  * en échec n'annule pas les autres.
  */
-export async function applyImportChunk(batchId: string): Promise<ApplyProgress> {
+export async function applyImportChunk(
+  batchId: string,
+): Promise<ApplyProgress> {
   const owned = await ownedBatch(batchId);
   if (!owned.ok) return { error: owned.error };
   const { user, batch } = owned;
 
-  if (batch.status === "APPLIED") return { error: "Ce lot a déjà été appliqué." };
+  if (batch.status === "APPLIED")
+    return { error: "Ce lot a déjà été appliqué." };
   if (batch.status !== "ANALYZED" && batch.status !== "APPLYING") {
     return { error: "Ce lot doit d'abord être analysé." };
   }
@@ -348,7 +353,10 @@ export async function applyImportChunk(batchId: string): Promise<ApplyProgress> 
   };
 
   const total = await db.importTarget.count({
-    where: { batchId: batch.id, resolution: { in: ["LINK", "CREATE"] as ImportResolution[] } },
+    where: {
+      batchId: batch.id,
+      resolution: { in: ["LINK", "CREATE"] as ImportResolution[] },
+    },
   });
 
   const targets = await db.importTarget.findMany({
@@ -468,14 +476,22 @@ async function finalizeImportBatch(batchId: string): Promise<void> {
   });
 
   // Une seule fois, en fin de course — surtout pas à chaque paquet.
-  for (const path of ["/", "/journal", "/watchlist", "/catalogue", "/a-completer"]) {
+  for (const path of [
+    "/",
+    "/journal",
+    "/watchlist",
+    "/catalogue",
+    "/a-completer",
+  ]) {
     revalidatePath(path);
   }
   revalidatePath(`/import/${batchId}`);
 }
 
 /** Abandonne un lot sans le supprimer (garde la trace des fichiers). */
-export async function cancelImportBatch(batchId: string): Promise<ActionResult> {
+export async function cancelImportBatch(
+  batchId: string,
+): Promise<ActionResult> {
   const owned = await ownedBatch(batchId);
   if (!owned.ok) return { error: owned.error };
   if (owned.batch.status === "APPLIED") {
@@ -492,7 +508,9 @@ export async function cancelImportBatch(batchId: string): Promise<ActionResult> 
 }
 
 /** Supprime un lot et tout ce qu'il contient (les œuvres créées restent). */
-export async function deleteImportBatch(batchId: string): Promise<ActionResult> {
+export async function deleteImportBatch(
+  batchId: string,
+): Promise<ActionResult> {
   const owned = await ownedBatch(batchId);
   if (!owned.ok) return { error: owned.error };
   if (owned.batch.status === "APPLYING") {

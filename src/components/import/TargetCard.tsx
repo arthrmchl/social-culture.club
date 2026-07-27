@@ -11,10 +11,7 @@ import { setTargetResolution, setTargetType } from "@/actions/import";
 import { searchCatalogue } from "@/actions/import-search";
 import { MEDIA, MEDIA_ORDER, formatYear } from "@/lib/media";
 import type { ImportCandidate } from "@/lib/import/match";
-import type {
-  ImportResolution,
-  WorkType,
-} from "@/generated/prisma/enums";
+import type { ImportResolution, WorkType } from "@/generated/prisma/enums";
 import { cn } from "@/lib/utils";
 
 export type TargetCardData = {
@@ -156,7 +153,9 @@ export function TargetCard({ target }: { target: TargetCardData }) {
           <Button
             size="sm"
             variant={
-              local.decided && local.resolution === "LINK" ? "primary" : "secondary"
+              local.decided && local.resolution === "LINK"
+                ? "primary"
+                : "secondary"
             }
             disabled={pending}
             onClick={() => decide("LINK", local.matchedWorkId ?? best.id)}
@@ -167,7 +166,9 @@ export function TargetCard({ target }: { target: TargetCardData }) {
         <Button
           size="sm"
           variant={
-            local.decided && local.resolution === "CREATE" ? "primary" : "secondary"
+            local.decided && local.resolution === "CREATE"
+              ? "primary"
+              : "secondary"
           }
           disabled={pending}
           onClick={() => decide("CREATE")}
@@ -266,14 +267,22 @@ export function TargetCard({ target }: { target: TargetCardData }) {
                 }
               }}
             />
-            <Button size="sm" variant="secondary" disabled={pending} onClick={search}>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={pending}
+              onClick={search}
+            >
               Chercher
             </Button>
           </div>
           {results.length > 0 && (
             <ul className="flex flex-col gap-1">
               {results.map((c) => (
-                <li key={c.id} className="flex items-center justify-between gap-2">
+                <li
+                  key={c.id}
+                  className="flex items-center justify-between gap-2"
+                >
                   <span className="min-w-0 truncate text-sm">
                     {c.titleFr}{" "}
                     <span className="text-xs text-muted">

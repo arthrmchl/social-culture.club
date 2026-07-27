@@ -38,7 +38,14 @@ const workSchema = z.object({
 
 function splitList(raw?: string): string[] {
   if (!raw) return [];
-  return [...new Set(raw.split(",").map((s) => s.trim()).filter(Boolean))];
+  return [
+    ...new Set(
+      raw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 /** FormData -> objet, en ignorant les champs vides (sinon z.coerce("") = 0). */
@@ -233,7 +240,9 @@ export async function duplicateWork(sourceId: string): Promise<never> {
  * Les données rattachées (sous-unités, suivi, journal de tous les
  * utilisateurs) sont supprimées en cascade au niveau base (onDelete: Cascade).
  */
-export async function deleteWork(workId: string): Promise<{ error: string } | never> {
+export async function deleteWork(
+  workId: string,
+): Promise<{ error: string } | never> {
   const user = await requireUser();
   if (!isAdmin(user)) {
     return { error: "Seul l'administrateur peut supprimer une fiche." };
@@ -277,7 +286,9 @@ export async function editWork(
   const work = await db.work.findUnique({ where: { id: workId } });
   if (!work) return { error: "Fiche introuvable." };
   if (work.createdById !== user.id && !isAdmin(user)) {
-    return { error: "Seul le créateur ou l'administrateur peut modifier cette fiche." };
+    return {
+      error: "Seul le créateur ou l'administrateur peut modifier cette fiche.",
+    };
   }
 
   const parsed = editSchema.safeParse(formToObject(formData));
@@ -311,7 +322,8 @@ export async function editWork(
         // Une fiche importée cesse d'être « à compléter » dès qu'elle a un
         // visuel et une année — les deux manques que laisse un import (I1).
         needsCompletion:
-          work.needsCompletion && (!coverImageId || (d.year ?? work.year) === null),
+          work.needsCompletion &&
+          (!coverImageId || (d.year ?? work.year) === null),
         metadata,
       },
     });

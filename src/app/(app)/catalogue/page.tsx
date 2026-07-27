@@ -53,7 +53,9 @@ export default async function CataloguePage({
           {toComplete === 1
             ? "1 fiche à compléter"
             : `${toComplete} fiches à compléter`}{" "}
-          <span className="text-muted">— visuels et informations manquants</span>
+          <span className="text-muted">
+            — visuels et informations manquants
+          </span>
         </Link>
       )}
 

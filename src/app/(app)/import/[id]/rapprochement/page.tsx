@@ -3,7 +3,10 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { Card, EmptyState } from "@/components/ui/Card";
-import { TargetCard, type TargetCardData } from "@/components/import/TargetCard";
+import {
+  TargetCard,
+  type TargetCardData,
+} from "@/components/import/TargetCard";
 import { BulkBar } from "@/components/import/BulkBar";
 import { ApplyRunner } from "@/components/import/ApplyRunner";
 import type { ImportCandidate } from "@/lib/import/match";
@@ -15,7 +18,10 @@ const PAGE_SIZE = 50;
 type Filtre = "a-decider" | "rattachees" | "a-creer" | "ignorees";
 
 /** Chaque onglet ne montre qu'un état : on ne noie pas l'ambigu dans l'évident. */
-const FILTERS: Record<Filtre, { label: string; where: Prisma.ImportTargetWhereInput }> = {
+const FILTERS: Record<
+  Filtre,
+  { label: string; where: Prisma.ImportTargetWhereInput }
+> = {
   "a-decider": { label: "À décider", where: { decidedBy: null } },
   rattachees: {
     label: "Rattachées",
@@ -179,8 +185,8 @@ export default async function RapprochementPage({
         <div>
           <h2 className="text-sm font-semibold">Appliquer l&apos;import</h2>
           <p className="text-xs text-muted">
-            {applicable} œuvre(s) seront rattachées ou créées, avec leurs entrées
-            de journal. Réappliquer le même lot ne crée pas de doublon.
+            {applicable} œuvre(s) seront rattachées ou créées, avec leurs
+            entrées de journal. Réappliquer le même lot ne crée pas de doublon.
           </p>
         </div>
         {pendingCount > 0 && (
@@ -212,7 +218,8 @@ function PageLink({
   disabled: boolean;
   children: React.ReactNode;
 }) {
-  if (disabled) return <span className="text-muted opacity-50">{children}</span>;
+  if (disabled)
+    return <span className="text-muted opacity-50">{children}</span>;
   return (
     <Link
       href={`/import/${batchId}/rapprochement?filtre=${filtre}&page=${page}`}
@@ -230,7 +237,8 @@ function summarize(
   const parts: string[] = [rows === 1 ? "1 événement" : `${rows} événements`];
   const seasons = extra.seasons?.length ?? 0;
   const volumes = extra.volumes?.length ?? 0;
-  if (seasons > 0) parts.push(seasons === 1 ? "1 saison" : `${seasons} saisons`);
+  if (seasons > 0)
+    parts.push(seasons === 1 ? "1 saison" : `${seasons} saisons`);
   if (volumes > 0) parts.push(volumes === 1 ? "1 tome" : `${volumes} tomes`);
   return parts.join(" · ");
 }
