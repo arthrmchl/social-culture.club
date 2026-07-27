@@ -31,6 +31,22 @@ export type ImportedWorkRef = {
   volumeNumber: number | null;
 };
 
+/**
+ * Appartenance à une liste (lot 3, S9) — portée par un événement `LIST_ITEM`.
+ *
+ * La clé est calculée par l'adaptateur : c'est la source qui possède la
+ * sémantique d'identité d'une liste, `apply.ts` reste agnostique.
+ */
+export type ImportedListRef = {
+  key: string;
+  name: string;
+  description: string | null;
+  position: number | null;
+  note: string | null;
+  isRanked: boolean;
+  createdAt: Date | null;
+};
+
 /** Un événement importé, indépendant de la source. */
 export type ImportedEvent = {
   kind: ImportRowKind;
@@ -53,6 +69,11 @@ export type ImportedEvent = {
   finishedAt: Date | null;
 
   context: string | null;
+
+  /** Étiquettes portées par la source (tags du diary Letterboxd) — lot 3. */
+  tags: string[];
+  /** Appartenance à une liste — `null` hors événement `LIST_ITEM` (lot 3). */
+  list: ImportedListRef | null;
 
   sourceFile: string;
   sourceLine: number;
@@ -88,8 +109,16 @@ export type ImportOptions = {
   detectVolumes: boolean;
   /** Type par défaut des séries importées (Serializd ne le dit pas). */
   seriesDefaultType: "SERIES" | "ANIME";
-  /** Conserver les fichiers de listes pour le lot 3. */
+  /**
+   * Conserver les fichiers de listes bruts au lieu de les reprendre. Depuis le
+   * lot 3, les listes sont importables : cette option ne sert plus qu'à
+   * remettre à plus tard.
+   */
   retainLists: boolean;
+  /** Reprendre les listes (S9) — lot 3. */
+  importLists: boolean;
+  /** Reprendre les étiquettes de la source (S10) — lot 3. */
+  importTags: boolean;
 };
 
 export const DEFAULT_IMPORT_OPTIONS: ImportOptions = {
@@ -99,7 +128,9 @@ export const DEFAULT_IMPORT_OPTIONS: ImportOptions = {
   importReviews: true,
   detectVolumes: true,
   seriesDefaultType: "SERIES",
-  retainLists: true,
+  retainLists: false,
+  importLists: true,
+  importTags: true,
 };
 
 export type SourceAdapter = {
@@ -135,6 +166,10 @@ export function emptyEvent(
     startedAt: null,
     finishedAt: null,
     context: null,
+    // Les adaptateurs du lot 2 n'en savent rien : leurs événements restent
+    // exactement ce qu'ils étaient.
+    tags: [],
+    list: null,
     sourceFile,
     sourceLine,
     seed: "",

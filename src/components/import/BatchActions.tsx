@@ -174,5 +174,7 @@ const OPTION_LABELS: Record<keyof ImportOptions, string> = {
   importReviews: "Importer les critiques",
   detectVolumes: "Détecter les tomes dans les titres (« Vol. 3 »)",
   seriesDefaultType: "Type par défaut",
+  importLists: "Importer les listes",
+  importTags: "Importer les étiquettes",
   retainLists: "Conserver les listes pour plus tard",
 };

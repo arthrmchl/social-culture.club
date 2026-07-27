@@ -76,8 +76,12 @@ export function TagInput({
           placeholder="policier, années 70, à relire"
           aria-label="Étiquettes, séparées par des virgules"
         />
+        {/* Le libellé nomme sa cible : plusieurs formulaires cohabitent sur la
+            fiche, et « Enregistrer » seul ne dit pas quoi. */}
         <Button size="sm" disabled={pending || !dirty} onClick={save}>
-          {saved && !dirty ? "Enregistré" : "Enregistrer"}
+          {saved && !dirty
+            ? "Étiquettes enregistrées"
+            : "Enregistrer les étiquettes"}
         </Button>
       </div>
 

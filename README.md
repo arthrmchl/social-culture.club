@@ -119,7 +119,7 @@ Lot 0 :
 - **D30** édition d'une fiche réservée au créateur et à l'administrateur.
 - **D31** création : titre + année + visuel obligatoires.
 - **D24** inscription en cercle privé, sur invitation.
-- **D8** modèle des éditions/intégrales prêt dès le lot 0 (UI au lot 3).
+- **D8** modèle des éditions/intégrales prêt dès le lot 0 (interface au lot 3).
 
 Lot 1 :
 
@@ -145,6 +145,27 @@ Lot 2 :
 - **I5** scripts de sauvegarde et de restauration (base + visuels).
 - **N9** suppression de compte effective, les fiches créées restant au
   catalogue partagé (D29).
+
+Lot 3 :
+
+- **S9/D11** listes multi-médias, ordonnées ou non, avec description, visuel,
+  commentaire par élément et épinglage (`/listes`).
+- **S10** étiquettes personnelles sur les œuvres et le journal, navigables
+  (`/tags`, `/tag/[slug]`). L'identité d'un tag est son slug : « Science-Fiction »
+  et « science fiction » sont la même étiquette.
+- **S11** quatre favoris de profil, tous médias confondus — distincts du
+  « j'aime » (S6), qui reste une réaction à l'œuvre.
+- **L3/D9** citations rattachées aux lectures uniquement (`/citations`) ; le
+  modèle reste ouvert aux autres médias, seule l'action les restreint.
+- **L5/D12** objectifs annuels par portée, dont « Lectures » activée par défaut
+  (`/objectifs`). Est compté ce qui est consigné au journal dans l'année.
+- **L6/D8** éditions et intégrales : édition par défaut, édition lue (qui
+  pilote la pagination affichée), et « J'ai lu cette intégrale » qui marque les
+  tomes couverts comme lus.
+- **S12** bibliothèque filtrable (`/bibliotheque`) — **mes** œuvres, par média,
+  statut, note, genre et étiquette ; à distinguer de `/catalogue`, qui montre
+  les fiches de toute l'instance.
+- **S13** accueil enrichi : progression des objectifs et listes épinglées.
 
 ## Vérification manuelle (bout en bout)
 
@@ -234,13 +255,14 @@ n'embarque pas les visuels.
 
 ## Hors périmètre (lots suivants)
 
-Listes, tags, favoris, citations, objectifs annuels, gestion complète des
-éditions côté UI, bibliothèque riche (lot 3) ; social (lot 4) ; statistiques,
-rétrospective, PWA (lot 5).
+Social — profils publics, abonnements, fil d'activité, commentaires,
+modération (lot 4) ; statistiques, rétrospective annuelle, PWA (lot 5).
 
-Les listes présentes dans un export Letterboxd sont **conservées telles quelles**
-dans le lot d'import : elles seront rejouées quand le modèle de listes arrivera
-au lot 3, sans qu'il faille réimporter.
+Les listes présentes dans un export Letterboxd sont désormais **importées**
+(S9), de même que les étiquettes du journal (S10). Un lot importé avant le
+lot 3, dont les listes avaient été mises de côté, se reprend depuis sa page :
+« Reprendre les listes » crée un lot neuf à partir des fichiers conservés,
+sans qu'il faille réimporter quoi que ce soit.
 
 Formats d'export à confirmer contre de vrais fichiers (D14) : Serializd et
 literal.club. Le cas échéant, seule la table `COLUMNS` de l'adaptateur concerné

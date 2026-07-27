@@ -21,6 +21,7 @@ import {
   splitTags,
 } from "../values";
 import { letterboxdSlug } from "../infer";
+import { parseLetterboxdLists } from "./letterboxd-lists";
 import {
   emptyEvent,
   emptyWorkRef,
@@ -94,7 +95,9 @@ export const letterboxdAdapter: SourceAdapter = {
         const film = filmRef(rec, map);
         if (!film) continue;
 
-        const { date, precision } = parseImportDate(cell(rec, map, "watchedDate"));
+        const { date, precision } = parseImportDate(
+          cell(rec, map, "watchedDate"),
+        );
         const fallback =
           date === null && options.watchedDateFallback === "addedDate"
             ? parseImportDate(cell(rec, map, "date"))
@@ -107,7 +110,14 @@ export const letterboxdAdapter: SourceAdapter = {
           : (fallback?.precision ?? "UNKNOWN");
         event.rating = parseHalfStarRating(cell(rec, map, "rating"));
         event.isRewatch = parseYesNo(cell(rec, map, "rewatch"));
-        event.context = tagsToContext(cell(rec, map, "tags"));
+        // Les étiquettes ont enfin un modèle (lot 3, S10) : elles y vont.
+        // Sans reprise des tags, on garde le repli du lot 2 — les verser dans
+        // le contexte — pour ne pas perdre l'information.
+        if (options.importTags) {
+          event.tags = splitTags(cell(rec, map, "tags"));
+        } else {
+          event.context = tagsToContext(cell(rec, map, "tags"));
+        }
         event.seed = `${film.externalId ?? film.titleFr}|${cell(rec, map, "watchedDate") || "sans-date"}`;
 
         events.push(event);
@@ -225,23 +235,54 @@ export const letterboxdAdapter: SourceAdapter = {
       }
     }
 
-    // 7. Listes : conservées brutes, jamais appliquées au lot 2 (modèle au lot 3).
+    // 7. Listes (S9) — reprises depuis le lot 3.
+    //
+    //    Chaque élément devient un événement `LIST_ITEM` : il désigne un film
+    //    par le même slug Letterboxd que le diary, donc il traverse
+    //    `groupIntoTargets`, le rapprochement pg_trgm et l'écran de
+    //    rapprochement sans une ligne de code nouvelle. C'est tout l'intérêt
+    //    d'avoir conservé ces fichiers bruts au lot 2.
     const lists = files.filter((f) => normalizePath(f.name).includes("lists/"));
     if (lists.length > 0) {
-      if (options.retainLists) {
+      if (!options.importLists || options.retainLists) {
         retained.push(...lists);
         warnings.push({
           level: "info",
           file: `${lists.length} fichier(s) de listes`,
           message:
-            "Les listes sont conservées telles quelles : elles seront reprises quand les listes arriveront dans l'application (lot 3).",
+            "Les listes sont conservées telles quelles : vous pourrez les reprendre plus tard depuis la page du lot.",
         });
       } else {
-        warnings.push({
-          level: "warning",
-          file: `${lists.length} fichier(s) de listes`,
-          message: "Listes ignorées : la conservation a été désactivée.",
-        });
+        const parsed = parseLetterboxdLists(lists);
+        warnings.push(...parsed.warnings);
+
+        for (const list of parsed.lists) {
+          for (const item of list.items) {
+            const film: FilmRef = {
+              externalId: item.externalId,
+              titleFr: item.titleFr,
+              year: item.year,
+            };
+            const event = emptyEvent(
+              "LIST_ITEM",
+              workRef(film),
+              list.sourceFile,
+              item.line,
+            );
+            event.list = {
+              // La clé d'import de la liste : stable, indépendante du lot.
+              key: `letterboxd:list:${list.slug}`,
+              name: list.name,
+              description: list.description,
+              position: item.position,
+              note: item.note,
+              isRanked: list.isRanked,
+              createdAt: list.createdAt,
+            };
+            event.seed = `${film.externalId ?? film.titleFr}|list:${list.slug}`;
+            events.push(event);
+          }
+        }
       }
     }
 

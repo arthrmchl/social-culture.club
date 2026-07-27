@@ -96,11 +96,52 @@ modules `server-only`, qui lèvent une erreur sans cette condition.
   **numéro**, pas par un identifiant interne, et l'aller-retour écriture →
   lecture est testé avec le parseur d'import.
 
+## Bibliothèque riche (lot 3)
+
+- **Données individuelles** : listes, étiquettes, favoris, citations et
+  objectifs appartiennent à leur auteur. Toute lecture comme toute écriture se
+  referme sur `userId` — y compris pour retirer une étiquette d'une œuvre du
+  catalogue partagé, où plusieurs membres peuvent en avoir posé.
+- **Étiquettes** : l'identité d'un tag est son **slug**, pas son libellé ; le
+  premier libellé rencontré est conservé à l'affichage (`src/lib/tags.ts`).
+- **Objectifs** : la portée est un énuméré `GoalScope` non nul, jamais un
+  `WorkType?`. Un scope nullable rendrait `@@unique([userId, year, scope])`
+  inopérant pour l'objectif global, PostgreSQL traitant les NULL comme
+  distincts. Ce qui compte est défini **une seule fois**, dans
+  `src/lib/goal-count.ts`.
+- **Positions** (éléments de liste, favoris) : toujours contiguës à partir de
+  0, jamais de contrainte d'unicité — elle interdirait toute permutation sans
+  valeur temporaire. `reorderPositions` (`src/lib/lists.ts`) ne renvoie que les
+  lignes réellement déplacées.
+- **Éditions** : une édition décrit l'objet publié, donc **catalogue partagé**
+  et droits D30 ; choisir son édition (`UserWork.editionId`) et déclarer une
+  lecture sont du **suivi**, ouverts à chacun. L'invariante « une seule édition
+  par défaut » est tenue par l'action, pas par la base : un index unique
+  partiel se ferait réécrire à chaque `migrate dev`.
+- **Intégrales** : `applyEditionCoverage` (`src/lib/tracking.ts`) n'écrit que
+  des `TomeProgress`, jamais une entrée de journal par tome — sinon
+  `recomputeViewings` compterait cinq lectures pour une. Elle n'est branchée
+  que sur des gestes explicites, jamais sur la progression en pages.
+- **Bibliothèque** (`/bibliotheque`) : **mes** œuvres, à ne pas confondre avec
+  `/catalogue` (toute l'instance, D29). Ses facettes sont des liens, pas un
+  état client : chaque combinaison est une URL. `src/lib/library.ts` valide les
+  `searchParams` en ramenant l'inconnu au défaut plutôt qu'en levant.
+- **Barre de navigation** : la 4ᵉ entrée mobile est `/bibliotheque` ;
+  `/catalogue`, `/listes`, `/import` et `/invitations` vivent dans
+  `DESKTOP_ONLY` et sont atteignables au mobile depuis `/profil`.
+- **Boutons** : sur une fiche, plusieurs formulaires cohabitent — un libellé
+  nomme sa cible (« Enregistrer les étiquettes », « Enregistrer la citation »)
+  plutôt que de répéter « Enregistrer ».
+
 ## Lotissement
 
-Lots 0 (fondations), 1 (suivi) et 2 (reprise de l'historique) sont livrés.
-À venir : bibliothèque riche — listes, tags, favoris, citations, objectifs,
-éditions (lot 3), social (lot 4), statistiques/rétrospective/PWA (lot 5).
+Lots 0 (fondations), 1 (suivi), 2 (reprise de l'historique) et 3 (bibliothèque
+riche) sont livrés. À venir : social (lot 4), statistiques/rétrospective/PWA
+(lot 5).
 
-Les fichiers de listes des exports Letterboxd sont **conservés bruts** dans
-`ImportFile` (`parsed = false`) : le lot 3 les rejouera sans réimport.
+Les listes des exports Letterboxd sont désormais **importées** (événements
+`LIST_ITEM`), et les étiquettes du diary rejoignent `JournalEntryTag` au lieu
+d'échouer dans `JournalEntry.context`. Un lot du lot 2 dont les fichiers ont
+été conservés (`parsed = false`) se reprend par `replayRetainedFiles` : elle
+recopie ces fichiers dans un **lot neuf** plutôt que de relâcher la garde qui
+interdit de ré-analyser un lot appliqué — ré-analyser recréerait ses cibles.

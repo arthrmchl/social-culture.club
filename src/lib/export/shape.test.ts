@@ -24,8 +24,12 @@ describe("exportFilename", () => {
   });
 
   it("retombe sur un nom générique sans utilisateur", () => {
-    expect(exportFilename(null, "json", jour)).toBe("scc-export-2026-07-27.json");
-    expect(exportFilename("???", "json", jour)).toBe("scc-export-2026-07-27.json");
+    expect(exportFilename(null, "json", jour)).toBe(
+      "scc-export-2026-07-27.json",
+    );
+    expect(exportFilename("???", "json", jour)).toBe(
+      "scc-export-2026-07-27.json",
+    );
   });
 });
 
@@ -44,7 +48,9 @@ describe("isCsvEntity", () => {
 describe("contrat du document", () => {
   it("annonce son format et sa version", () => {
     expect(EXPORT_FORMAT).toBe("social-culture.club");
-    expect(EXPORT_VERSION).toBe(1);
+    // Version 2 depuis le lot 3 : un lecteur doit pouvoir distinguer un export
+    // sans listes d'un export d'avant les listes.
+    expect(EXPORT_VERSION).toBe(2);
   });
 
   it("nomme chaque entité exportable en français", () => {

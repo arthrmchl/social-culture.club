@@ -136,7 +136,7 @@ export function QuoteSection({
                 });
               }}
             >
-              Enregistrer
+              Enregistrer la citation
             </Button>
             <Button
               variant="ghost"
@@ -210,7 +210,7 @@ function QuoteCard({ quote }: { quote: QuoteData }) {
                 });
               }}
             >
-              Enregistrer
+              Enregistrer la citation
             </Button>
             <Button
               variant="ghost"
