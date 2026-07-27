@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser, isAdmin } from "@/lib/session";
-import { MEDIA, usesEpisodes, usesTomes, usesPages } from "@/lib/media";
+import { MEDIA, usesEpisodes, usesTomes, usesPages, formatYear } from "@/lib/media";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { StatusSelect } from "@/components/StatusSelect";
@@ -14,6 +14,7 @@ import { JournalEntryForm } from "@/components/JournalEntryForm";
 import { DeleteWorkButton } from "@/components/DeleteWorkButton";
 import { EpisodeTracker } from "@/components/EpisodeTracker";
 import { TomeTracker } from "@/components/TomeTracker";
+import { CoverPlaceholder } from "@/components/CoverPlaceholder";
 import { ReadingProgressWidget } from "@/components/ReadingProgressWidget";
 import {
   JournalEntryCard,
@@ -146,6 +147,24 @@ export default async function OeuvrePage({
 
   return (
     <div className="flex flex-col gap-8">
+      {/* Fiche importée à compléter (lot 2, I1) */}
+      {work.needsCompletion && (
+        <Card className="flex flex-col gap-3 border-accent/40 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-medium">Fiche à compléter</p>
+            <p className="text-sm text-muted">
+              Importée depuis un service externe : il lui manque au moins un
+              visuel.
+            </p>
+          </div>
+          {canEdit && (
+            <Link href={`/oeuvre/${work.id}/modifier`}>
+              <Button size="sm">Compléter</Button>
+            </Link>
+          )}
+        </Card>
+      )}
+
       {/* En-tête */}
       <div className="flex flex-col gap-6 sm:flex-row">
         <div className="mx-auto w-44 shrink-0 sm:mx-0">
@@ -158,9 +177,7 @@ export default async function OeuvrePage({
                 className="h-full w-full object-cover"
               />
             ) : (
-              <div className="flex h-full items-center justify-center text-4xl opacity-40">
-                {media.emoji}
-              </div>
+              <CoverPlaceholder title={work.titleFr} type={work.type} />
             )}
           </div>
         </div>
@@ -174,7 +191,7 @@ export default async function OeuvrePage({
             <p className="text-muted">{work.titleOriginal}</p>
           )}
           <p className="mt-1 text-sm text-muted">
-            {work.year}
+            {formatYear(work.year)}
             {work.durationMinutes ? ` · ${work.durationMinutes} min` : ""}
             {work.pageCount ? ` · ${work.pageCount} pages` : ""}
           </p>

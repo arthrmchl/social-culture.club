@@ -16,19 +16,23 @@ export default async function CataloguePage({
   const workType: WorkType | undefined =
     type && isWorkType(type) ? type : undefined;
 
-  const works = await db.work.findMany({
-    where: workType ? { type: workType } : undefined,
-    orderBy: { createdAt: "desc" },
-    take: 120,
-    select: {
-      id: true,
-      type: true,
-      titleFr: true,
-      titleOriginal: true,
-      year: true,
-      coverImageId: true,
-    },
-  });
+  const [works, toComplete] = await Promise.all([
+    db.work.findMany({
+      where: workType ? { type: workType } : undefined,
+      orderBy: { createdAt: "desc" },
+      take: 120,
+      select: {
+        id: true,
+        type: true,
+        titleFr: true,
+        titleOriginal: true,
+        year: true,
+        coverImageId: true,
+        needsCompletion: true,
+      },
+    }),
+    db.work.count({ where: { needsCompletion: true } }),
+  ]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -39,6 +43,19 @@ export default async function CataloguePage({
         </Link>
       </div>
       <MediaFilter basePath="/catalogue" current={workType} />
+
+      {toComplete > 0 && (
+        <Link
+          href="/a-completer"
+          className="rounded-[var(--radius)] border border-accent/40 px-3 py-2 text-sm hover:bg-elevated"
+        >
+          ✨{" "}
+          {toComplete === 1
+            ? "1 fiche à compléter"
+            : `${toComplete} fiches à compléter`}{" "}
+          <span className="text-muted">— visuels et informations manquants</span>
+        </Link>
+      )}
 
       {works.length > 0 ? (
         <WorkGrid works={works} />

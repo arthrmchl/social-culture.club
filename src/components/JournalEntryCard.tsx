@@ -49,7 +49,10 @@ export function JournalEntryCard({
   const sub = subUnitLabel(entry);
 
   return (
-    <div className="flex gap-3 rounded-[var(--radius)] border border-border bg-surface p-3">
+    <div
+      data-testid="journal-entry"
+      className="flex gap-3 rounded-[var(--radius)] border border-border bg-surface p-3"
+    >
       {showWork && (
         <Link href={`/oeuvre/${entry.work.id}`} className="shrink-0">
           <div className="aspect-[2/3] w-12 overflow-hidden rounded-md border border-border bg-elevated">

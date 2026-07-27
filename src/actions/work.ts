@@ -291,6 +291,8 @@ export async function editWork(
       ? { ...(work.metadata as object), format: d.format }
       : (work.metadata as object);
 
+  const coverImageId = d.coverImageId || work.coverImageId;
+
   await db.$transaction(async (tx) => {
     await tx.work.update({
       where: { id: workId },
@@ -305,7 +307,11 @@ export async function editWork(
         durationMinutes: d.durationMinutes ?? work.durationMinutes,
         pageCount: d.pageCount ?? work.pageCount,
         isbn: d.isbn ?? work.isbn,
-        coverImageId: d.coverImageId || work.coverImageId,
+        coverImageId,
+        // Une fiche importée cesse d'être « à compléter » dès qu'elle a un
+        // visuel et une année — les deux manques que laisse un import (I1).
+        needsCompletion:
+          work.needsCompletion && (!coverImageId || (d.year ?? work.year) === null),
         metadata,
       },
     });

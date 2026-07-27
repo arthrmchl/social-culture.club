@@ -13,6 +13,11 @@ Ce dépôt contient les lots suivants :
   progression fine (épisodes, tomes, pages), watchlist et accueil « en cours ».
   À ce stade, l'application remplace les trois services de référence en usage
   solo — **jalon scénario A**.
+- **Lot 2 — Reprise de l'historique** : imports Letterboxd, Serializd et
+  lectures (Goodreads / literal.club) créateurs d'œuvres, écran de
+  rapprochement avec le catalogue, imports rejouables sans doublon, file des
+  fiches à compléter, export complet (JSON + CSV par entité), suppression de
+  compte effective et scripts de sauvegarde/restauration.
 
 ## Stack
 
@@ -64,6 +69,9 @@ npm run dev            # http://localhost:3000
 | `npm run dev` | Serveur de développement |
 | `npm run build` / `start` | Build et exécution de production |
 | `npm test` | Tests unitaires (Vitest) |
+| `npm run verify` | Vérification de la couche données contre la vraie base |
+| `npm run backup` | Sauvegarde base + visuels (I5) |
+| `npm run restore` | Restauration d'une sauvegarde |
 | `npm run lint` | ESLint |
 | `npm run db:up` | Démarre PostgreSQL (Docker) |
 | `npm run db:migrate` | Applique les migrations Prisma |
@@ -79,18 +87,27 @@ prisma/
   seed.ts                Admin + invitation + genres
 src/
   lib/                   db, auth, session, storage, search, text, generators, media,
-                         rating, status, progress, tracking, markdown, dates
+                         rating, status, progress, tracking, markdown, dates,
+                         placeholder
+  lib/import/            csv, headers, values, types, infer, merge, match, dedup,
+                         limits, candidates, apply + adapters/ (lot 2)
+  lib/export/            csv, shape, collect (lot 2)
   actions/               auth, invitation, work, profile, upload,
-                         status, journal, progress, season (suivi lot 1)
+                         status, journal, progress, season (suivi lot 1),
+                         import, import-search, completion, account (lot 2)
   components/            UI réutilisable + WorkForm, WorkCard, NavBar, CoverUpload,
                          RatingStars/StarInput/Stars, LikeButton, StatusSelect,
                          ReviewEditor/ReviewContent, JournalEntryForm/Card,
                          EpisodeTracker, TomeTracker, ReadingProgressWidget
   app/(auth)/            Connexion, inscription, mot de passe oublié, réinitialisation
   app/(app)/             Accueil, recherche, création, catalogue, fiche, profil,
-                         journal, watchlist, invitations
+                         journal, watchlist, invitations,
+                         import, a-completer, donnees (lot 2)
   app/api/auth/          Handler better-auth
   app/api/uploads/[id]/  Service des visuels téléversés
+  app/api/import/upload/ Téléversement des fichiers d'import (lot 2)
+  app/api/export/        Export JSON et CSV par entité (lot 2)
+scripts/                 verify (vérification données), backup, restore
   proxy.ts               Protection optimiste des routes (ex-middleware)
 ```
 
@@ -114,6 +131,20 @@ Lot 1 :
 - **T2** passage automatique à « à jour » / « terminé » selon la progression,
   sans écraser un statut manuel (en pause, abandonné).
 - **L2** progression de lecture historisée (table `ReadingProgress`).
+
+Lot 2 :
+
+- **I1/I2/I3** imports Letterboxd, Serializd et lectures, créateurs d'œuvres.
+- **I6** écran de rapprochement avec le catalogue existant, et imports
+  **rejouables sans duplication** : chaque entrée de journal importée porte une
+  clé stable (`JournalEntry.importKey`, unique par utilisateur).
+- **D31** l'obligation de visuel ne vaut que pour la création manuelle : les
+  fiches importées reçoivent un visuel de substitution et un badge « à
+  compléter », rassemblées dans `/a-completer`.
+- **I4** export complet (JSON + un CSV par entité), lisible sans l'application.
+- **I5** scripts de sauvegarde et de restauration (base + visuels).
+- **N9** suppression de compte effective, les fiches créées restant au
+  catalogue partagé (D29).
 
 ## Vérification manuelle (bout en bout)
 
@@ -148,16 +179,69 @@ Suivi (lot 1), sur une fiche :
     le statut passe à « en cours ».
 13. Marquer une œuvre **« à voir »** → elle apparaît dans **`/watchlist`**.
 
-Vérification de la couche données (lot 0 + lot 1) sans le navigateur :
+Reprise de l'historique (lot 2) :
+
+14. **`/import`** → choisir la source, déposer les CSV (dézippés), **analyser**.
+    Le récapitulatif annonce les œuvres et les événements trouvés, et signale
+    en français toute colonne manquante.
+15. **Rapprochement** : l'onglet « À décider » ne contient que l'ambigu — le
+    reste a été tranché automatiquement. Rattacher, créer ou ignorer, une
+    décision par œuvre.
+16. **Appliquer** : le journal, la liste d'envies, les notes et les critiques
+    sont repris ; le rapport récapitule.
+17. **Réimporter le même export** → le rapport annonce **0 fiche et 0 entrée
+    créées** : les imports sont rejouables sans doublon.
+18. **`/a-completer`** liste les fiches importées sans visuel ; les compléter
+    retire le badge.
+19. **`/donnees`** : export JSON, export CSV par entité, suppression de compte.
+
+Vérification de la couche données (lots 0 à 2) sans le navigateur :
 
 ```bash
-npx tsx scripts/verify.ts   # crée des œuvres, coche épisodes/tomes, vérifie les auto-statuts
-npm test                    # tests unitaires (rating, status, progress, generators, text)
+npm run verify              # œuvres, auto-statuts, recherche floue, import + ré-import idempotent
+npm test                    # tests unitaires (rating, status, progress, import, export…)
 npm run test:e2e            # parcours bout en bout Playwright (serveur dev requis sur :3000)
 ```
 
+## Sauvegardes (I5)
+
+```bash
+npm run backup              # dump PostgreSQL + archive des visuels dans BACKUPS_DIR
+npm run restore             # liste les sauvegardes disponibles
+npm run restore -- backups/scc-....dump --yes   # restauration (écrase la base cible)
+```
+
+Le dump passe par le conteneur Docker quand il tourne (`scc-postgres`) : `pg_dump`
+refuse de dialoguer avec un serveur plus récent que lui, et la version du client
+local n'a aucune raison de suivre celle du conteneur. Sinon le client local est
+utilisé ; s'il n'est pas dans le `PATH`, indiquez-le avec `PG_DUMP=…`.
+
+Rétention réglée par `BACKUP_RETENTION_DAYS` (14 jours par défaut).
+
+**Tester la restauration, régulièrement.** Une sauvegarde jamais restaurée n'est
+pas une sauvegarde. Sur une base jetable :
+
+```bash
+createdb scc_restore_test
+DATABASE_URL="postgresql://scc:scc@localhost:5432/scc_restore_test" \
+  npm run restore -- backups/scc-....dump --yes
+```
+
+À faire côté hébergement (hors dépôt) : planification (cron ou timer systemd),
+copie hors-site chiffrée, et surveillance de l'espace disque. À noter :
+l'export I4 n'est **pas** une sauvegarde — il ne couvre qu'un utilisateur et
+n'embarque pas les visuels.
+
 ## Hors périmètre (lots suivants)
 
-Imports/export (lot 2) ; listes, tags, favoris, citations, objectifs annuels,
-gestion complète des éditions côté UI, bibliothèque riche (lot 3) ; social
-(lot 4) ; statistiques, rétrospective, PWA (lot 5).
+Listes, tags, favoris, citations, objectifs annuels, gestion complète des
+éditions côté UI, bibliothèque riche (lot 3) ; social (lot 4) ; statistiques,
+rétrospective, PWA (lot 5).
+
+Les listes présentes dans un export Letterboxd sont **conservées telles quelles**
+dans le lot d'import : elles seront rejouées quand le modèle de listes arrivera
+au lot 3, sans qu'il faille réimporter.
+
+Formats d'export à confirmer contre de vrais fichiers (D14) : Serializd et
+literal.club. Le cas échéant, seule la table `COLUMNS` de l'adaptateur concerné
+est à corriger — `src/lib/import/adapters/`.

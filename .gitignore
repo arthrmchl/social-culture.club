@@ -49,3 +49,6 @@ next-env.d.ts
 # Visuels téléversés (servis via /api/uploads)
 /uploads/*
 !/uploads/.gitkeep
+
+# sauvegardes locales
+/backups/

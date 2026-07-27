@@ -19,6 +19,15 @@
   --radius: 0.75rem;
 }
 
+/* Visuel de substitution des fiches importées (lot 2) : la teinte vient du
+   titre, la clarté du thème. */
+:root {
+  --placeholder-s: 40%;
+  --placeholder-l1: 24%;
+  --placeholder-l2: 13%;
+  --placeholder-text: 80%;
+}
+
 /* Thème clair : via préférence système ou bascule manuelle. */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
@@ -31,6 +40,10 @@
     --color-accent: #c78a12;
     --color-accent-foreground: #ffffff;
     --color-danger: #c53030;
+
+    --placeholder-l1: 90%;
+    --placeholder-l2: 78%;
+    --placeholder-text: 30%;
   }
 }
 
@@ -44,6 +57,10 @@
   --color-accent: #c78a12;
   --color-accent-foreground: #ffffff;
   --color-danger: #c53030;
+
+  --placeholder-l1: 90%;
+  --placeholder-l2: 78%;
+  --placeholder-text: 30%;
 }
 
 body {

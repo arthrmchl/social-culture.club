@@ -4,7 +4,7 @@ import { useActionState, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { detectDuplicates, type WorkFormState } from "@/actions/work";
 import type { DuplicateCandidate } from "@/lib/search";
-import { MEDIA, MEDIA_ORDER } from "@/lib/media";
+import { MEDIA, MEDIA_ORDER, formatYear } from "@/lib/media";
 import type { WorkType } from "@/generated/prisma/enums";
 import { Card } from "@/components/ui/Card";
 import { Input, Textarea, Label, FieldHint } from "@/components/ui/Field";
@@ -161,7 +161,7 @@ export function WorkForm({
                   href={`/oeuvre/${d.id}`}
                   className="text-accent hover:underline"
                 >
-                  {MEDIA[d.type].emoji} {d.titleFr} ({d.year})
+                  {MEDIA[d.type].emoji} {d.titleFr} ({formatYear(d.year)})
                 </Link>
               </li>
             ))}

@@ -9,8 +9,9 @@ export type WorkSearchResult = {
   type: WorkType;
   titleFr: string;
   titleOriginal: string | null;
-  year: number;
+  year: number | null; // null pour une fiche importée sans année (lot 2)
   coverImageId: string | null;
+  needsCompletion: boolean;
   sim: number;
 };
 
@@ -38,6 +39,7 @@ export async function searchWorks(
       w."titleOriginal",
       w."year",
       w."coverImageId",
+      w."needsCompletion",
       GREATEST(
         similarity(w."titleNormalized", ${q}),
         CASE WHEN w."isbn" IS NOT NULL AND w."isbn" = ${isbn} AND ${isbn} <> '' THEN 1 ELSE 0 END
@@ -49,7 +51,7 @@ export async function searchWorks(
       OR (${isbn} <> '' AND w."isbn" = ${isbn})
     )
     ${typeClause}
-    ORDER BY "sim" DESC, w."year" DESC
+    ORDER BY "sim" DESC, w."year" DESC NULLS LAST
     LIMIT 40
   `);
 }
@@ -58,20 +60,27 @@ export type DuplicateCandidate = {
   id: string;
   type: WorkType;
   titleFr: string;
-  year: number;
+  year: number | null;
   coverImageId: string | null;
   sim: number;
 };
 
 /**
  * Détection de doublons à la volée (S2, D31) : titre proche ET année ±1.
+ * Une année inconnue (fiche importée, lot 2) lève la contrainte d'année :
+ * on ne peut pas comparer ce qu'on n'a pas.
  */
 export async function findDuplicateWorks(
   rawTitle: string,
-  year: number,
+  year: number | null,
 ): Promise<DuplicateCandidate[]> {
   const norm = normalizeTitle(rawTitle);
   if (!norm) return [];
+
+  const yearClause =
+    year === null
+      ? Prisma.empty
+      : Prisma.sql`AND (w."year" IS NULL OR abs(w."year" - ${year}) <= 1)`;
 
   return db.$queryRaw<DuplicateCandidate[]>(Prisma.sql`
     SELECT
@@ -83,7 +92,7 @@ export async function findDuplicateWorks(
       similarity(w."titleNormalized", ${norm}) AS "sim"
     FROM "Work" w
     WHERE w."titleNormalized" % ${norm}
-      AND abs(w."year" - ${year}) <= 1
+      ${yearClause}
     ORDER BY "sim" DESC
     LIMIT 5
   `);
