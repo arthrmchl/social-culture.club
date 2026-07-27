@@ -54,6 +54,19 @@ export function NavBar({
                 {item.label}
               </Link>
             ))}
+            {/* La barre mobile est pleine : ces entrées restent au bureau,
+                et sont accessibles au mobile depuis le profil (lot 2). */}
+            <Link
+              href="/import"
+              className={cn(
+                "rounded-md px-3 py-1.5 text-sm hover:bg-elevated",
+                isActive(pathname, "/import")
+                  ? "bg-elevated font-medium text-accent"
+                  : "text-muted",
+              )}
+            >
+              Importer
+            </Link>
             {isAdmin && (
               <Link
                 href="/invitations"

@@ -14,6 +14,11 @@ const FR_MONTH = new Intl.DateTimeFormat("fr-FR", {
   timeZone: "UTC",
 });
 
+/** Date simple, toujours connue (création d'un lot d'import, horodatages). */
+export function formatDate(date: Date): string {
+  return FR_DAY.format(date);
+}
+
 /** Date précise, approximative (mois/année) ou inconnue. */
 export function formatLoggedDate(
   loggedAt: Date | null,
