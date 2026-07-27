@@ -11,11 +11,14 @@ import { requireUser } from "@/lib/session";
 import { db } from "@/lib/db";
 import { MEDIA, MEDIA_ORDER, usesPages } from "@/lib/media";
 import { ListCard } from "@/components/lists/ListCard";
+import { goalProgress, scopeEmoji, scopeLabel } from "@/lib/goals";
+import { countForGoals } from "@/lib/goal-count";
 
 export default async function AccueilPage() {
   const user = await requireUser();
+  const year = new Date().getFullYear();
 
-  const [recent, total, inProgress, recentEntries, pinnedLists] =
+  const [recent, total, inProgress, recentEntries, pinnedLists, goals] =
     await Promise.all([
       db.work.findMany({
         orderBy: { createdAt: "desc" },
@@ -82,7 +85,20 @@ export default async function AccueilPage() {
           },
         },
       }),
+      db.goal.findMany({
+        where: { userId: user.id, year },
+        orderBy: { target: "desc" },
+        select: { scope: true, target: true },
+      }),
     ]);
+
+  // Les compteurs ne sont demandés que pour les portées réellement dotées
+  // d'un objectif : inutile de compter neuf fois pour n'en afficher aucune.
+  const goalCounts = await countForGoals(
+    user.id,
+    year,
+    goals.map((g) => g.scope),
+  );
 
   const reads = inProgress.filter((uw) => usesPages(uw.work.type));
   const watching = inProgress.filter((uw) => !usesPages(uw.work.type));
@@ -172,6 +188,55 @@ export default async function AccueilPage() {
           </div>
         )}
       </section>
+
+      {/* Objectifs de l'année (L5, S13) */}
+      {goals.length > 0 && (
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+              Objectifs {year}
+            </h2>
+            <Link
+              href="/objectifs"
+              className="text-sm text-accent hover:underline"
+            >
+              Régler
+            </Link>
+          </div>
+          <Card className="flex flex-col divide-y divide-border p-0">
+            {goals.map((g) => {
+              const done = goalCounts[g.scope] ?? 0;
+              const progress = goalProgress(done, g.target);
+              return (
+                <div key={g.scope} className="flex flex-col gap-2 px-4 py-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span>
+                      {scopeEmoji(g.scope)} {scopeLabel(g.scope)}
+                    </span>
+                    <span className="text-muted">
+                      {done} / {g.target}
+                      {progress.reached ? " 🎉" : ""}
+                    </span>
+                  </div>
+                  <div
+                    className="h-2 overflow-hidden rounded-full bg-elevated"
+                    role="progressbar"
+                    aria-valuenow={progress.percent}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-label={`Progression ${scopeLabel(g.scope)}`}
+                  >
+                    <div
+                      className="h-full rounded-full bg-accent"
+                      style={{ width: `${progress.percent}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </Card>
+        </section>
+      )}
 
       {/* Listes épinglées (S9, S13) */}
       {pinnedLists.length > 0 && (

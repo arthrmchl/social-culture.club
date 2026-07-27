@@ -82,6 +82,15 @@ export default async function ProfilPage() {
               Les passages sauvegardés de vos lectures
             </span>
           </Link>
+          <Link
+            href="/objectifs"
+            className="px-4 py-3 text-sm hover:bg-elevated"
+          >
+            🎯 Mes objectifs
+            <span className="block text-xs text-muted">
+              Une cible annuelle par média, et sa progression
+            </span>
+          </Link>
         </Card>
       </section>
 

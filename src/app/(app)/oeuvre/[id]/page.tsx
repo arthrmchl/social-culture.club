@@ -28,6 +28,8 @@ import { FavoriteButton } from "@/components/FavoriteButton";
 import { TagInput } from "@/components/tags/TagInput";
 import { TagPills } from "@/components/tags/TagPills";
 import { QuoteSection, type QuoteData } from "@/components/quotes/QuoteSection";
+import { EditionSection } from "@/components/editions/EditionSection";
+import { pageCountFor } from "@/lib/editions";
 import {
   JournalEntryCard,
   type JournalEntryCardData,
@@ -191,6 +193,8 @@ export default async function OeuvrePage({
   }));
 
   const viewingCount = entries.length;
+  const myEdition =
+    work.editions.find((e) => e.id === userWork?.editionId) ?? null;
   const tags = workTags.map((wt) => wt.tag);
   const quoteItems: QuoteData[] = quotes.map((q) => ({
     id: q.id,
@@ -355,6 +359,20 @@ export default async function OeuvrePage({
         </Card>
       </section>
 
+      {/* Éditions (lot 3, L6, D8) — le modèle dormait en base depuis le lot 0 */}
+      {isReading(work.type) && (
+        <section>
+          <SectionTitle>Éditions</SectionTitle>
+          <EditionSection
+            workId={work.id}
+            editions={work.editions}
+            myEditionId={userWork?.editionId ?? null}
+            canEdit={canEdit}
+            hasTomes={work.tomes.length > 0}
+          />
+        </section>
+      )}
+
       {/* Étiquettes (lot 3, S10) */}
       <section>
         <SectionTitle>Mes étiquettes</SectionTitle>
@@ -424,7 +442,8 @@ export default async function OeuvrePage({
               workId={work.id}
               currentPage={userWork?.currentPage ?? null}
               currentPercent={userWork?.progressPercent ?? null}
-              pageCount={work.pageCount ?? null}
+              // La pagination suit l'édition lue quand elle est précisée (D8).
+              pageCount={pageCountFor(work.pageCount, myEdition)}
             />
           </Card>
         </section>

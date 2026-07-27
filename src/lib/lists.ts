@@ -51,7 +51,9 @@ export function reorderPositions<T extends Positioned>(
  * Renumérotation compacte après une suppression : mêmes règles, appliquées à
  * ce qui reste.
  */
-export function compactPositions<T extends Positioned>(items: T[]): Positioned[] {
+export function compactPositions<T extends Positioned>(
+  items: T[],
+): Positioned[] {
   const ordered = [...items].sort((a, b) => a.position - b.position);
   const changed: Positioned[] = [];
   ordered.forEach((item, index) => {

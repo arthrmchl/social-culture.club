@@ -78,7 +78,9 @@ describe("libraryParams", () => {
   });
 
   it("laisse le type au MediaFilter, qui le pose lui-même", () => {
-    const params = libraryParams(parseLibraryQuery({ type: "FILM", tri: "titre" }));
+    const params = libraryParams(
+      parseLibraryQuery({ type: "FILM", tri: "titre" }),
+    );
     expect(params).not.toHaveProperty("type");
     expect(params.tri).toBe("titre");
   });

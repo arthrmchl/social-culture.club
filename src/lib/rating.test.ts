@@ -1,10 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  starsToScore,
-  scoreToStars,
-  formatStars,
-  starParts,
-} from "./rating";
+import { starsToScore, scoreToStars, formatStars, starParts } from "./rating";
 
 describe("starsToScore", () => {
   it("convertit les demi-étoiles en score sur 10", () => {

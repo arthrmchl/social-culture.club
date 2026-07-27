@@ -53,8 +53,7 @@ export function episodesUpTo(
     .filter(
       (e) =>
         e.seasonNumber < target.season ||
-        (e.seasonNumber === target.season &&
-          e.episodeNumber <= target.episode),
+        (e.seasonNumber === target.season && e.episodeNumber <= target.episode),
     )
     .map((e) => e.id);
 }

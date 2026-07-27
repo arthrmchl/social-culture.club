@@ -48,7 +48,12 @@ export async function saveImageFromBuffer(
 
   await db.image.update({ where: { id: image.id }, data: { path: relPath } });
 
-  return { id: image.id, path: relPath, width: info.width, height: info.height };
+  return {
+    id: image.id,
+    path: relPath,
+    width: info.width,
+    height: info.height,
+  };
 }
 
 /** Lit un visuel depuis le disque à partir de son id. */

@@ -29,9 +29,14 @@ describe("parseTagInput", () => {
 
   it("fond les doublons sur le premier libellé rencontré", () => {
     // Casse, accents et ponctuation ne distinguent pas deux étiquettes.
-    const tags = parseTagInput("Science-Fiction, science fiction, SCIENCE  FICTION");
+    const tags = parseTagInput(
+      "Science-Fiction, science fiction, SCIENCE  FICTION",
+    );
     expect(tags).toHaveLength(1);
-    expect(tags[0]).toEqual({ name: "Science-Fiction", slug: "science-fiction" });
+    expect(tags[0]).toEqual({
+      name: "Science-Fiction",
+      slug: "science-fiction",
+    });
   });
 
   it("écarte les entrées vides ou sans slug", () => {

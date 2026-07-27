@@ -2,6 +2,7 @@ import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import type { WorkStatusState } from "@/generated/prisma/enums";
 import { computeSeriesAutoState, computeTomesAutoState } from "./progress";
+import { coveredTomeNumbers } from "./editions";
 
 // Aides serveur partagées par les server actions du suivi (lot 1).
 // À exécuter dans la même transaction que la mutation qui les déclenche.
@@ -62,7 +63,12 @@ export async function recomputeSeriesState(
   const watched = await tx.episodeWatch.count({
     where: { userId, episode: { season: { workId } } },
   });
-  await applyAutoState(tx, userId, workId, computeSeriesAutoState(watched, total));
+  await applyAutoState(
+    tx,
+    userId,
+    workId,
+    computeSeriesAutoState(watched, total),
+  );
 }
 
 /** Recalcule le statut d'une série BD/manga d'après les tomes lus (L4). */
@@ -76,6 +82,59 @@ export async function recomputeTomesState(
     where: { userId, tome: { workId }, state: "READ" },
   });
   await applyAutoState(tx, userId, workId, computeTomesAutoState(read, total));
+}
+
+/**
+ * Lire une intégrale marque comme lus les tomes qu'elle couvre (L6, D8).
+ *
+ * Seuls des `TomeProgress` sont écrits, jamais une entrée de journal par
+ * tome : le journal garde la seule entrée de l'intégrale, sans quoi
+ * `recomputeViewings` compterait cinq lectures pour une.
+ *
+ * Idempotent — `createMany({ skipDuplicates: true })` adossé à
+ * `@@unique([userId, tomeId])`, comme le reste du suivi au tome.
+ *
+ * Renvoie le nombre de tomes concernés (0 si l'édition n'est pas une
+ * intégrale, ou si elle ne relève pas de cette œuvre).
+ */
+export async function applyEditionCoverage(
+  tx: Tx,
+  userId: string,
+  workId: string,
+  editionId: string,
+): Promise<number> {
+  const edition = await tx.edition.findUnique({
+    where: { id: editionId },
+    select: {
+      workId: true,
+      tome: { select: { workId: true } },
+      coversTomeFrom: true,
+      coversTomeTo: true,
+    },
+  });
+  if (!edition) return 0;
+
+  // Garde d'appartenance : une édition rattachée à une autre œuvre ne doit
+  // rien pouvoir marquer ici, même si son identifiant est passé à la main.
+  const owner = edition.workId ?? edition.tome?.workId ?? null;
+  if (owner !== workId) return 0;
+
+  const numbers = coveredTomeNumbers(edition);
+  if (numbers.length === 0) return 0;
+
+  const tomes = await tx.tome.findMany({
+    where: { workId, number: { in: numbers } },
+    select: { id: true },
+  });
+  if (tomes.length === 0) return 0;
+
+  await tx.tomeProgress.createMany({
+    data: tomes.map((t) => ({ userId, tomeId: t.id, state: "READ" as const })),
+    skipDuplicates: true,
+  });
+
+  await recomputeTomesState(tx, userId, workId);
+  return tomes.length;
 }
 
 /** Recale le compteur de visionnages/lectures (F2) sur le nombre d'entrées. */

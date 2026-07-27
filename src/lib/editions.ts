@@ -85,3 +85,15 @@ export function pickDefaultEdition<T extends EditionLike>(
 ): T | null {
   return editions.find((e) => e.isDefault) ?? editions[0] ?? null;
 }
+
+/**
+ * Pagination de référence : celle de l'édition lue si elle est connue, sinon
+ * celle de la fiche. C'est ce qui permet à une progression « page 210 sur
+ * 380 » d'être juste quand on lit le poche plutôt que le broché.
+ */
+export function pageCountFor(
+  workPageCount: number | null | undefined,
+  edition: EditionLike | null | undefined,
+): number | null {
+  return edition?.pageCount ?? workPageCount ?? null;
+}
