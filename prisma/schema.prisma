@@ -53,6 +53,9 @@ model User {
   tomeProgress    TomeProgress[]
   readingProgress ReadingProgress[]
 
+  // reprise de l'historique (lot 2)
+  importBatches ImportBatch[]
+
   @@map("user")
 }
 
@@ -141,12 +144,17 @@ model Work {
   titleFr         String
   titleOriginal   String?
   titleNormalized String // minuscule + sans accents, pour dédup et recherche pg_trgm
-  year            Int
+  year            Int? // obligatoire à la création manuelle (D31) ; inconnue possible à l'import (lot 2)
   synopsis        String?
   durationMinutes Int? // films / épisodes
   pageCount       Int? // livres / one-shots
   isbn            String? // champ libre saisi (D6 : jamais utilisé pour un lookup externe)
   metadata        Json     @default("{}") // ex. { "format": "TV" } pour les animés
+
+  // Fiche importée (lot 2, I1) : ni visuel ni métadonnées complètes, à enrichir
+  // depuis la file de complétion. L'obligation de visuel (D31) ne vaut que pour
+  // la création manuelle.
+  needsCompletion Boolean @default(false)
 
   coverImageId String?
   coverImage   Image?  @relation("WorkCover", fields: [coverImageId], references: [id], onDelete: SetNull)
@@ -167,9 +175,13 @@ model Work {
   journalEntries  JournalEntry[]
   readingProgress ReadingProgress[]
 
+  // reprise de l'historique (lot 2)
+  importTargets ImportTarget[] @relation("ImportTargetWork")
+
   @@index([type])
   @@index([createdById])
   @@index([year])
+  @@index([needsCompletion])
   // Recherche floue et détection de doublons (S1/S2) — index GIN pg_trgm,
   // désormais géré par Prisma pour ne plus être supprimé à chaque migration.
   @@index([titleNormalized(ops: raw("gin_trgm_ops"))], type: Gin)
@@ -426,9 +438,15 @@ model JournalEntry {
 
   watches EpisodeWatch[] // épisodes liés à une entrée synthétique
 
+  /// Clé d'import (lot 2, I6) — rend le ré-import idempotent ; null pour une
+  /// saisie manuelle. PostgreSQL traite les NULL comme distincts dans un index
+  /// unique, les saisies manuelles cohabitent donc sans conflit.
+  importKey String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([userId, importKey])
   @@index([userId, loggedAt])
   @@index([workId])
 }
@@ -484,4 +502,167 @@ model ReadingProgress {
   recordedAt DateTime @default(now())
 
   @@index([userId, workId, recordedAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Imports (lot 2) — reprise de l'historique (I1, I2, I3, I6)
+//
+// Pipeline en quatre étapes persistées : téléversement → analyse →
+// rapprochement → application. Le découpage ImportTarget (l'œuvre à rapprocher)
+// / ImportRow (l'événement) est ce qui rend l'écran de rapprochement
+// supportable : 3 000 lignes de journal ≈ 900 œuvres distinctes.
+// ─────────────────────────────────────────────────────────────
+
+enum ImportSource {
+  LETTERBOXD
+  GOODREADS // couvre literal.club (format compatible)
+  SERIALIZD
+  SCC // ré-import d'un export social-culture.club (I4)
+}
+
+enum ImportBatchStatus {
+  UPLOADED // fichiers reçus, pas encore analysés
+  ANALYZED // lignes et cibles créées, rapprochement en attente
+  APPLYING // application en cours (reprenable)
+  APPLIED
+  FAILED
+  CANCELLED
+}
+
+/// Ce que devient une cible au rapprochement (I6).
+enum ImportResolution {
+  LINK // rattacher à une fiche existante
+  CREATE // créer une fiche
+  IGNORE
+}
+
+enum ImportDecidedBy {
+  AUTO
+  USER
+}
+
+/// Nature d'un événement importé.
+enum ImportRowKind {
+  LOG // consommation datée → JournalEntry
+  RATING // note seule → UserWork.currentRating
+  REVIEW
+  LIKE
+  WATCHLIST
+  STATE
+  PROGRESS
+  LIST_ITEM // conservé brut pour le lot 3, jamais appliqué au lot 2
+  UNSUPPORTED
+}
+
+enum ImportRowStatus {
+  PENDING
+  APPLIED
+  SKIPPED
+  FAILED
+}
+
+/// Un lot d'import — l'unité de reprise et de rejeu (I6).
+model ImportBatch {
+  id     String            @id @default(cuid())
+  userId String
+  user   User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source ImportSource
+  status ImportBatchStatus @default(UPLOADED)
+
+  label    String? // « Letterboxd — 27/07/2026 »
+  options  Json    @default("{}") // ImportOptions
+  stats    Json    @default("{}") // compteurs figés après analyse et application
+  warnings Json    @default("[]") // ImportWarning[] — colonnes manquantes, lignes illisibles
+
+  // reprise après interruption
+  cursor   Int       @default(0) // cibles déjà appliquées
+  lockedAt DateTime? // verrou anti-double-application (expire à 5 min)
+  error    String?
+
+  createdAt  DateTime  @default(now())
+  analyzedAt DateTime?
+  appliedAt  DateTime?
+
+  files   ImportFile[]
+  targets ImportTarget[]
+  rows    ImportRow[]
+
+  @@index([userId, createdAt])
+}
+
+/// Payload brut conservé — dont les listes Letterboxd, rejouées au lot 3.
+model ImportFile {
+  id       String      @id @default(cuid())
+  batchId  String
+  batch    ImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  name     String // « diary.csv », « lists/mes-favoris.csv »
+  bytes    Int
+  checksum String // sha256 hex — détecte le ré-import du même fichier
+  content  String // texte brut
+  parsed   Boolean     @default(false) // false pour les listes au lot 2
+
+  @@index([batchId])
+}
+
+/// Une œuvre distincte à rapprocher (I6) — porte la décision, pas la ligne.
+model ImportTarget {
+  id      String      @id @default(cuid())
+  batchId String
+  batch   ImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  /// Clé de regroupement stable : externalId, sinon type|titreNormalisé|année.
+  workKey         String
+  externalId      String? // « letterboxd:… », « goodreads:… » — jamais recopié dans Work (D6)
+  type            WorkType
+  titleFr         String
+  titleOriginal   String?
+  titleNormalized String
+  year            Int?
+  isbn            String?
+  pageCount       Int?
+  creators        String[]
+  extra           Json     @default("{}") // n° de saison ou de tome détecté, format…
+
+  candidates Json              @default("[]") // candidats figés à l'analyse
+  resolution ImportResolution?
+  decidedBy  ImportDecidedBy?
+  confidence Float?
+
+  matchedWorkId String?
+  matchedWork   Work?   @relation("ImportTargetWork", fields: [matchedWorkId], references: [id], onDelete: SetNull)
+
+  appliedAt DateTime?
+  error     String?
+
+  rows ImportRow[]
+
+  @@unique([batchId, workKey])
+  @@index([batchId, resolution])
+  @@index([matchedWorkId])
+}
+
+/// Un événement importé — une ligne de CSV, ou plusieurs lignes fusionnées.
+model ImportRow {
+  id       String        @id @default(cuid())
+  batchId  String
+  batch    ImportBatch   @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  targetId String?
+  target   ImportTarget? @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  kind   ImportRowKind
+  status ImportRowStatus @default(PENDING)
+
+  sourceFile String
+  sourceLine Int
+  raw        Json // ligne brute { colonne: valeur } — rejouable
+  payload    Json // ImportedEvent normalisé
+
+  /// Recopiée dans JournalEntry.importKey — le point d'idempotence.
+  importKey String
+
+  result Json?
+  error  String?
+
+  @@index([batchId, status])
+  @@index([targetId])
 }

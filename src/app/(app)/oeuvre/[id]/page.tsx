@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser, isAdmin } from "@/lib/session";
-import { MEDIA, usesEpisodes, usesTomes, usesPages } from "@/lib/media";
+import { MEDIA, usesEpisodes, usesTomes, usesPages, formatYear } from "@/lib/media";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { StatusSelect } from "@/components/StatusSelect";
@@ -174,7 +174,7 @@ export default async function OeuvrePage({
             <p className="text-muted">{work.titleOriginal}</p>
           )}
           <p className="mt-1 text-sm text-muted">
-            {work.year}
+            {formatYear(work.year)}
             {work.durationMinutes ? ` · ${work.durationMinutes} min` : ""}
             {work.pageCount ? ` · ${work.pageCount} pages` : ""}
           </p>

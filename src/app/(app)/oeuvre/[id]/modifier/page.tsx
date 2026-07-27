@@ -41,7 +41,7 @@ export default async function ModifierOeuvrePage({
           type: work.type,
           titleFr: work.titleFr,
           titleOriginal: work.titleOriginal ?? undefined,
-          year: work.year,
+          year: work.year ?? undefined,
           synopsis: work.synopsis ?? undefined,
           durationMinutes: work.durationMinutes ?? undefined,
           pageCount: work.pageCount ?? undefined,

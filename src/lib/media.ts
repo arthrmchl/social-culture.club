@@ -53,3 +53,11 @@ export function usesTomes(type: WorkType): boolean {
 export function usesPages(type: WorkType): boolean {
   return type === "BOOK" || type === "ONE_SHOT";
 }
+
+/**
+ * Année d'une fiche à l'affichage. Les fiches importées (lot 2, I1) peuvent
+ * arriver sans année : on l'annonce plutôt que d'afficher un trou.
+ */
+export function formatYear(year: number | null | undefined): string {
+  return year == null ? "Année inconnue" : String(year);
+}

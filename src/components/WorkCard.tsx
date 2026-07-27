@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { MEDIA } from "@/lib/media";
+import { MEDIA, formatYear } from "@/lib/media";
 import type { WorkType } from "@/generated/prisma/enums";
 import { cn } from "@/lib/utils";
 
@@ -8,7 +8,7 @@ export type WorkCardData = {
   type: WorkType;
   titleFr: string;
   titleOriginal?: string | null;
-  year: number;
+  year: number | null;
   coverImageId?: string | null;
 };
 
@@ -50,7 +50,7 @@ export function WorkCard({ work }: { work: WorkCardData }) {
         <p className="truncate text-sm font-medium group-hover:text-accent">
           {work.titleFr}
         </p>
-        <p className="text-xs text-muted">{work.year}</p>
+        <p className="text-xs text-muted">{formatYear(work.year)}</p>
       </div>
     </Link>
   );
