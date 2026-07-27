@@ -245,7 +245,11 @@ export function WorkForm({
 
       <div>
         <Label htmlFor="synopsis">Synopsis</Label>
-        <Textarea id="synopsis" name="synopsis" defaultValue={initial.synopsis} />
+        <Textarea
+          id="synopsis"
+          name="synopsis"
+          defaultValue={initial.synopsis}
+        />
       </div>
 
       {/* Générateurs de sous-unités (création uniquement — S2) */}
@@ -274,7 +278,9 @@ export function WorkForm({
               />
             </div>
           </div>
-          <FieldHint>Ex. 1 saison de 12 épisodes. Modifiable ensuite.</FieldHint>
+          <FieldHint>
+            Ex. 1 saison de 12 épisodes. Modifiable ensuite.
+          </FieldHint>
         </Card>
       )}
 

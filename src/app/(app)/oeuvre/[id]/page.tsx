@@ -2,7 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser, isAdmin } from "@/lib/session";
-import { MEDIA, usesEpisodes, usesTomes, usesPages, formatYear } from "@/lib/media";
+import {
+  MEDIA,
+  usesEpisodes,
+  usesTomes,
+  usesPages,
+  isReading,
+  formatYear,
+} from "@/lib/media";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { StatusSelect } from "@/components/StatusSelect";
@@ -16,6 +23,13 @@ import { EpisodeTracker } from "@/components/EpisodeTracker";
 import { TomeTracker } from "@/components/TomeTracker";
 import { CoverPlaceholder } from "@/components/CoverPlaceholder";
 import { ReadingProgressWidget } from "@/components/ReadingProgressWidget";
+import { AddToListButton } from "@/components/lists/AddToListButton";
+import { FavoriteButton } from "@/components/FavoriteButton";
+import { TagInput } from "@/components/tags/TagInput";
+import { TagPills } from "@/components/tags/TagPills";
+import { QuoteSection, type QuoteData } from "@/components/quotes/QuoteSection";
+import { EditionSection } from "@/components/editions/EditionSection";
+import { pageCountFor } from "@/lib/editions";
 import {
   JournalEntryCard,
   type JournalEntryCardData,
@@ -53,41 +67,76 @@ export default async function OeuvrePage({
   });
   if (!work) notFound();
 
-  const [userWork, watches, tomeProgress, userSeasons, entries, contextRows] =
-    await Promise.all([
-      db.userWork.findUnique({
-        where: { userId_workId: { userId: user.id, workId: id } },
-      }),
-      db.episodeWatch.findMany({
-        where: { userId: user.id, episode: { season: { workId: id } } },
-        select: { episodeId: true },
-      }),
-      db.tomeProgress.findMany({
-        where: { userId: user.id, tome: { workId: id } },
-        select: { tomeId: true, state: true },
-      }),
-      db.userSeason.findMany({
-        where: { userId: user.id, season: { workId: id } },
-      }),
-      db.journalEntry.findMany({
-        where: { userId: user.id, workId: id },
-        orderBy: [
-          { loggedAt: { sort: "desc", nulls: "last" } },
-          { createdAt: "desc" },
-        ],
-        include: {
-          season: { select: { number: true } },
-          episode: { select: { number: true } },
-          tome: { select: { number: true } },
-        },
-      }),
-      db.journalEntry.findMany({
-        where: { userId: user.id, context: { not: null } },
-        select: { context: true },
-        distinct: ["context"],
-        take: 20,
-      }),
-    ]);
+  const [
+    userWork,
+    watches,
+    tomeProgress,
+    userSeasons,
+    entries,
+    contextRows,
+    listMemberships,
+    workTags,
+    quotes,
+    favorite,
+  ] = await Promise.all([
+    db.userWork.findUnique({
+      where: { userId_workId: { userId: user.id, workId: id } },
+    }),
+    db.episodeWatch.findMany({
+      where: { userId: user.id, episode: { season: { workId: id } } },
+      select: { episodeId: true },
+    }),
+    db.tomeProgress.findMany({
+      where: { userId: user.id, tome: { workId: id } },
+      select: { tomeId: true, state: true },
+    }),
+    db.userSeason.findMany({
+      where: { userId: user.id, season: { workId: id } },
+    }),
+    db.journalEntry.findMany({
+      where: { userId: user.id, workId: id },
+      orderBy: [
+        { loggedAt: { sort: "desc", nulls: "last" } },
+        { createdAt: "desc" },
+      ],
+      include: {
+        season: { select: { number: true } },
+        episode: { select: { number: true } },
+        tome: { select: { number: true } },
+      },
+    }),
+    db.journalEntry.findMany({
+      where: { userId: user.id, context: { not: null } },
+      select: { context: true },
+      distinct: ["context"],
+      take: 20,
+    }),
+    db.listItem.findMany({
+      where: { workId: id, list: { userId: user.id } },
+      select: { list: { select: { slug: true, title: true } } },
+      orderBy: { list: { title: "asc" } },
+    }),
+    db.workTag.findMany({
+      where: { workId: id, tag: { userId: user.id } },
+      select: { tag: { select: { name: true, slug: true } } },
+      orderBy: { tag: { name: "asc" } },
+    }),
+    db.quote.findMany({
+      where: { userId: user.id, workId: id },
+      orderBy: [{ page: "asc" }, { createdAt: "asc" }],
+      select: {
+        id: true,
+        text: true,
+        page: true,
+        note: true,
+        tome: { select: { number: true } },
+      },
+    }),
+    db.favorite.findUnique({
+      where: { userId_workId: { userId: user.id, workId: id } },
+      select: { id: true },
+    }),
+  ]);
 
   const media = MEDIA[work.type];
   const canEdit = work.createdById === user.id || isAdmin(user);
@@ -144,6 +193,16 @@ export default async function OeuvrePage({
   }));
 
   const viewingCount = entries.length;
+  const myEdition =
+    work.editions.find((e) => e.id === userWork?.editionId) ?? null;
+  const tags = workTags.map((wt) => wt.tag);
+  const quoteItems: QuoteData[] = quotes.map((q) => ({
+    id: q.id,
+    text: q.text,
+    page: q.page,
+    note: q.note,
+    tomeNumber: q.tome?.number ?? null,
+  }));
 
   return (
     <div className="flex flex-col gap-8">
@@ -225,7 +284,12 @@ export default async function OeuvrePage({
                 </Button>
               </Link>
             ) : (
-              <Button variant="secondary" size="sm" disabled title="Bientôt (lot 4)">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled
+                title="Bientôt (lot 4)"
+              >
                 Proposer une correction
               </Button>
             )}
@@ -262,6 +326,7 @@ export default async function OeuvrePage({
               score={userWork?.currentRating ?? null}
             />
             <LikeButton workId={work.id} liked={userWork?.liked ?? false} />
+            <FavoriteButton workId={work.id} isFavorite={favorite !== null} />
           </div>
 
           {viewingCount > 0 && (
@@ -294,6 +359,62 @@ export default async function OeuvrePage({
         </Card>
       </section>
 
+      {/* Éditions (lot 3, L6, D8) — le modèle dormait en base depuis le lot 0 */}
+      {isReading(work.type) && (
+        <section>
+          <SectionTitle>Éditions</SectionTitle>
+          <EditionSection
+            workId={work.id}
+            editions={work.editions}
+            myEditionId={userWork?.editionId ?? null}
+            canEdit={canEdit}
+            hasTomes={work.tomes.length > 0}
+          />
+        </section>
+      )}
+
+      {/* Étiquettes (lot 3, S10) */}
+      <section>
+        <SectionTitle>Mes étiquettes</SectionTitle>
+        <div className="flex flex-col gap-3">
+          <TagPills tags={tags} />
+          <TagInput target={{ kind: "work", id: work.id }} tags={tags} />
+        </div>
+      </section>
+
+      {/* Citations (lot 3, L3 — lectures uniquement, D9) */}
+      {isReading(work.type) && (
+        <section>
+          <SectionTitle>Citations</SectionTitle>
+          <QuoteSection
+            workId={work.id}
+            quotes={quoteItems}
+            tomes={work.tomes.map((t) => ({ id: t.id, number: t.number }))}
+          />
+        </section>
+      )}
+
+      {/* Listes (lot 3, S9) */}
+      <section>
+        <SectionTitle>Mes listes</SectionTitle>
+        <div className="flex flex-col gap-3">
+          {listMemberships.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {listMemberships.map((m) => (
+                <Link
+                  key={m.list.slug}
+                  href={`/listes/${m.list.slug}`}
+                  className="rounded-full border border-border px-2.5 py-0.5 text-xs text-muted hover:bg-elevated"
+                >
+                  📋 {m.list.title}
+                </Link>
+              ))}
+            </div>
+          )}
+          <AddToListButton workId={work.id} />
+        </div>
+      </section>
+
       {/* Progression fine */}
       {usesEpisodes(work.type) && work.seasons.length > 0 && (
         <section>
@@ -321,7 +442,8 @@ export default async function OeuvrePage({
               workId={work.id}
               currentPage={userWork?.currentPage ?? null}
               currentPercent={userWork?.progressPercent ?? null}
-              pageCount={work.pageCount ?? null}
+              // La pagination suit l'édition lue quand elle est précisée (D8).
+              pageCount={pageCountFor(work.pageCount, myEdition)}
             />
           </Card>
         </section>

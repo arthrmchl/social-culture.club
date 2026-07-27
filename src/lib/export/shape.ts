@@ -8,7 +8,14 @@
  */
 
 export const EXPORT_FORMAT = "social-culture.club";
-export const EXPORT_VERSION = 1;
+
+/**
+ * Version 2 (lot 3) : listes, étiquettes, favoris, citations, objectifs et
+ * éditions. Le numéro change parce qu'un lecteur doit pouvoir distinguer
+ * « pas de listes parce que l'utilisateur n'en a pas » de « pas de listes
+ * parce que c'est un export d'avant le lot 3 ».
+ */
+export const EXPORT_VERSION = 2;
 
 export type ExportedWork = {
   id: string;
@@ -25,6 +32,20 @@ export type ExportedWork = {
   creators: { name: string; role: string | null }[];
   seasons: { number: number; title: string | null; episodes: number }[];
   tomes: { number: number; title: string | null; pageCount: number | null }[];
+  /**
+   * Éditions (D8) — désignées par leur libellé et leur ISBN, jamais par un
+   * identifiant interne, comme les sous-unités le sont par leur numéro.
+   */
+  editions: {
+    label: string;
+    format: string | null;
+    publisher: string | null;
+    isbn: string | null;
+    pageCount: number | null;
+    isDefault: boolean;
+    coversTomeFrom: number | null;
+    coversTomeTo: number | null;
+  }[];
   coverUrl: string | null;
 };
 
@@ -48,6 +69,12 @@ export type ExportedDocument = {
   tomeProgress: unknown[];
   readingProgress: unknown[];
   imports: unknown[];
+  // Bibliothèque riche (lot 3)
+  lists: unknown[];
+  tags: unknown[];
+  favorites: unknown[];
+  quotes: unknown[];
+  goals: unknown[];
 };
 
 /** Nom de fichier d'un export : stable, daté, sans caractère problématique. */
@@ -74,6 +101,13 @@ export const CSV_ENTITIES = [
   "tomes",
   "progression-lecture",
   "watchlist",
+  // Bibliothèque riche (lot 3)
+  "listes",
+  "tags",
+  "favoris",
+  "citations",
+  "objectifs",
+  "editions",
 ] as const;
 
 export type CsvEntity = (typeof CSV_ENTITIES)[number];
@@ -91,4 +125,10 @@ export const ENTITY_LABELS: Record<CsvEntity, string> = {
   tomes: "Tomes lus",
   "progression-lecture": "Progression de lecture",
   watchlist: "Liste d'envies",
+  listes: "Listes et leurs éléments",
+  tags: "Étiquettes",
+  favoris: "Favoris de profil",
+  citations: "Citations",
+  objectifs: "Objectifs annuels",
+  editions: "Éditions",
 };

@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/session";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { BatchActions } from "@/components/import/BatchActions";
+import { ReplayLists } from "@/components/import/ReplayLists";
 import { formatDate } from "@/lib/dates";
 import { formatBytes } from "@/lib/import/limits";
 import {
@@ -51,6 +52,7 @@ export default async function ImportBatchPage({
 
   const analyzed = batch.status === "ANALYZED";
   const locked = batch.status === "APPLYING" || batch.status === "APPLIED";
+  const retainedCount = batch.files.filter((f) => !f.parsed).length;
 
   const pendingCount = await db.importTarget.count({
     where: { batchId: batch.id, decidedBy: null },
@@ -59,13 +61,21 @@ export default async function ImportBatchPage({
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <Link href="/import" className="text-sm text-muted hover:text-foreground">
+        <Link
+          href="/import"
+          className="text-sm text-muted hover:text-foreground"
+        >
           ← Mes imports
         </Link>
-        <h1 className="mt-1 text-xl font-semibold">{batch.label ?? batch.source}</h1>
+        <h1 className="mt-1 text-xl font-semibold">
+          {batch.label ?? batch.source}
+        </h1>
         <p className="text-sm text-muted">
-          Déposé le {formatDate(batch.createdAt)} · {batch.files.length} fichier(s)
-          {batch.analyzedAt ? ` · analysé le ${formatDate(batch.analyzedAt)}` : ""}
+          Déposé le {formatDate(batch.createdAt)} · {batch.files.length}{" "}
+          fichier(s)
+          {batch.analyzedAt
+            ? ` · analysé le ${formatDate(batch.analyzedAt)}`
+            : ""}
         </p>
       </div>
 
@@ -82,8 +92,8 @@ export default async function ImportBatchPage({
 
           {pendingCount > 0 ? (
             <p className="text-sm">
-              <strong>{pendingCount}</strong> œuvre(s) demandent votre avis avant
-              l&apos;application.
+              <strong>{pendingCount}</strong> œuvre(s) demandent votre avis
+              avant l&apos;application.
             </p>
           ) : (
             <p className="text-sm text-muted">
@@ -142,6 +152,11 @@ export default async function ImportBatchPage({
         analyzed={analyzed}
         locked={locked}
       />
+
+      {/* Listes conservées au lot 2, reprenables depuis le lot 3 (S9) */}
+      {retainedCount > 0 && (
+        <ReplayLists batchId={batch.id} count={retainedCount} />
+      )}
 
       {/* Fichiers */}
       <section>

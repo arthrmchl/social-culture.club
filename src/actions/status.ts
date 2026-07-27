@@ -1,9 +1,9 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { revalidateWork } from "./revalidate";
 import { starsToScore } from "@/lib/rating";
 import { isStateAllowed } from "@/lib/status";
 import type { WorkStatusState } from "@/generated/prisma/enums";
@@ -16,13 +16,6 @@ async function workType(workId: string) {
     select: { type: true },
   });
   return w?.type ?? null;
-}
-
-function revalidateWork(workId: string) {
-  revalidatePath(`/oeuvre/${workId}`);
-  revalidatePath("/");
-  revalidatePath("/journal");
-  revalidatePath("/watchlist");
 }
 
 /** Statut par œuvre (S8, T2, L1). `null` retire tout statut. */

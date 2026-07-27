@@ -36,8 +36,12 @@ export function JournalEntryForm({
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
-  function computeDate(): { loggedAt: string | null; datePrecision: Precision } {
-    if (precision === "UNKNOWN") return { loggedAt: null, datePrecision: "UNKNOWN" };
+  function computeDate(): {
+    loggedAt: string | null;
+    datePrecision: Precision;
+  } {
+    if (precision === "UNKNOWN")
+      return { loggedAt: null, datePrecision: "UNKNOWN" };
     const iso =
       precision === "YEAR"
         ? `${year}-01-01T12:00:00.000Z`
@@ -45,7 +49,8 @@ export function JournalEntryForm({
           ? `${month}-01T12:00:00.000Z`
           : `${date}T12:00:00.000Z`;
     const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return { loggedAt: null, datePrecision: "UNKNOWN" };
+    if (Number.isNaN(d.getTime()))
+      return { loggedAt: null, datePrecision: "UNKNOWN" };
     return { loggedAt: d.toISOString(), datePrecision: precision };
   }
 
@@ -139,7 +144,9 @@ export function JournalEntryForm({
 
       {/* Critique (S7) */}
       <div>
-        <label className="mb-1 block text-xs text-muted">Critique (markdown)</label>
+        <label className="mb-1 block text-xs text-muted">
+          Critique (markdown)
+        </label>
         <Textarea
           value={review}
           onChange={(e) => setReview(e.target.value)}

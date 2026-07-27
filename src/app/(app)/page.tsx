@@ -10,58 +10,95 @@ import {
 import { requireUser } from "@/lib/session";
 import { db } from "@/lib/db";
 import { MEDIA, MEDIA_ORDER, usesPages } from "@/lib/media";
+import { ListCard } from "@/components/lists/ListCard";
+import { goalProgress, scopeEmoji, scopeLabel } from "@/lib/goals";
+import { countForGoals } from "@/lib/goal-count";
 
 export default async function AccueilPage() {
   const user = await requireUser();
+  const year = new Date().getFullYear();
 
-  const [recent, total, inProgress, recentEntries] = await Promise.all([
-    db.work.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 12,
-      select: {
-        id: true,
-        type: true,
-        titleFr: true,
-        titleOriginal: true,
-        year: true,
-        coverImageId: true,
-        needsCompletion: true,
-      },
-    }),
-    db.work.count(),
-    db.userWork.findMany({
-      where: { userId: user.id, state: "IN_PROGRESS" },
-      orderBy: { updatedAt: "desc" },
-      take: 12,
-      include: {
-        work: {
-          select: {
-            id: true,
-            type: true,
-            titleFr: true,
-            titleOriginal: true,
-            year: true,
-            coverImageId: true,
-            needsCompletion: true,
-            pageCount: true,
+  const [recent, total, inProgress, recentEntries, pinnedLists, goals] =
+    await Promise.all([
+      db.work.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 12,
+        select: {
+          id: true,
+          type: true,
+          titleFr: true,
+          titleOriginal: true,
+          year: true,
+          coverImageId: true,
+          needsCompletion: true,
+        },
+      }),
+      db.work.count(),
+      db.userWork.findMany({
+        where: { userId: user.id, state: "IN_PROGRESS" },
+        orderBy: { updatedAt: "desc" },
+        take: 12,
+        include: {
+          work: {
+            select: {
+              id: true,
+              type: true,
+              titleFr: true,
+              titleOriginal: true,
+              year: true,
+              coverImageId: true,
+              needsCompletion: true,
+              pageCount: true,
+            },
           },
         },
-      },
-    }),
-    db.journalEntry.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
-      take: 5,
-      include: {
-        season: { select: { number: true } },
-        episode: { select: { number: true } },
-        tome: { select: { number: true } },
-        work: {
-          select: { id: true, type: true, titleFr: true, coverImageId: true },
+      }),
+      db.journalEntry.findMany({
+        where: { userId: user.id },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        include: {
+          season: { select: { number: true } },
+          episode: { select: { number: true } },
+          tome: { select: { number: true } },
+          work: {
+            select: { id: true, type: true, titleFr: true, coverImageId: true },
+          },
         },
-      },
-    }),
-  ]);
+      }),
+      db.list.findMany({
+        where: { userId: user.id, isPinned: true },
+        orderBy: { updatedAt: "desc" },
+        take: 4,
+        select: {
+          slug: true,
+          title: true,
+          description: true,
+          isRanked: true,
+          isPinned: true,
+          coverImageId: true,
+          _count: { select: { items: true } },
+          items: {
+            take: 12,
+            orderBy: { position: "asc" },
+            select: { work: { select: { type: true } } },
+          },
+        },
+      }),
+      db.goal.findMany({
+        where: { userId: user.id, year },
+        orderBy: { target: "desc" },
+        select: { scope: true, target: true },
+      }),
+    ]);
+
+  // Les compteurs ne sont demandés que pour les portées réellement dotées
+  // d'un objectif : inutile de compter neuf fois pour n'en afficher aucune.
+  const goalCounts = await countForGoals(
+    user.id,
+    year,
+    goals.map((g) => g.scope),
+  );
 
   const reads = inProgress.filter((uw) => usesPages(uw.work.type));
   const watching = inProgress.filter((uw) => !usesPages(uw.work.type));
@@ -152,6 +189,89 @@ export default async function AccueilPage() {
         )}
       </section>
 
+      {/* Objectifs de l'année (L5, S13) */}
+      {goals.length > 0 && (
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+              Objectifs {year}
+            </h2>
+            <Link
+              href="/objectifs"
+              className="text-sm text-accent hover:underline"
+            >
+              Régler
+            </Link>
+          </div>
+          <Card className="flex flex-col divide-y divide-border p-0">
+            {goals.map((g) => {
+              const done = goalCounts[g.scope] ?? 0;
+              const progress = goalProgress(done, g.target);
+              return (
+                <div key={g.scope} className="flex flex-col gap-2 px-4 py-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span>
+                      {scopeEmoji(g.scope)} {scopeLabel(g.scope)}
+                    </span>
+                    <span className="text-muted">
+                      {done} / {g.target}
+                      {progress.reached ? " 🎉" : ""}
+                    </span>
+                  </div>
+                  <div
+                    className="h-2 overflow-hidden rounded-full bg-elevated"
+                    role="progressbar"
+                    aria-valuenow={progress.percent}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-label={`Progression ${scopeLabel(g.scope)}`}
+                  >
+                    <div
+                      className="h-full rounded-full bg-accent"
+                      style={{ width: `${progress.percent}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </Card>
+        </section>
+      )}
+
+      {/* Listes épinglées (S9, S13) */}
+      {pinnedLists.length > 0 && (
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+              Listes épinglées
+            </h2>
+            <Link
+              href="/listes"
+              className="text-sm text-accent hover:underline"
+            >
+              Toutes mes listes
+            </Link>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {pinnedLists.map((l) => (
+              <ListCard
+                key={l.slug}
+                list={{
+                  slug: l.slug,
+                  title: l.title,
+                  description: l.description,
+                  isRanked: l.isRanked,
+                  isPinned: l.isPinned,
+                  coverImageId: l.coverImageId,
+                  count: l._count.items,
+                  types: [...new Set(l.items.map((i) => i.work.type))],
+                }}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Dernières entrées du journal (S13) */}
       {entries.length > 0 && (
         <section>
@@ -159,7 +279,10 @@ export default async function AccueilPage() {
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
               Dernières entrées
             </h2>
-            <Link href="/journal" className="text-sm text-accent hover:underline">
+            <Link
+              href="/journal"
+              className="text-sm text-accent hover:underline"
+            >
               Tout le journal
             </Link>
           </div>

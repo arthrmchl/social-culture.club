@@ -30,6 +30,8 @@ const optionsSchema = z
     detectVolumes: z.boolean(),
     seriesDefaultType: z.enum(["SERIES", "ANIME"]),
     retainLists: z.boolean(),
+    importLists: z.boolean(),
+    importTags: z.boolean(),
   })
   .partial();
 
@@ -64,7 +66,9 @@ export async function analyzeImportBatch(
   const { batch } = owned;
 
   if (batch.status === "APPLYING") {
-    return { error: "Application en cours : impossible de relancer l'analyse." };
+    return {
+      error: "Application en cours : impossible de relancer l'analyse.",
+    };
   }
   if (batch.status === "APPLIED") {
     return { error: "Ce lot a déjà été appliqué." };
@@ -319,12 +323,15 @@ export type ApplyProgress =
  * transaction par cible — une œuvre n'est jamais créée à moitié, et une cible
  * en échec n'annule pas les autres.
  */
-export async function applyImportChunk(batchId: string): Promise<ApplyProgress> {
+export async function applyImportChunk(
+  batchId: string,
+): Promise<ApplyProgress> {
   const owned = await ownedBatch(batchId);
   if (!owned.ok) return { error: owned.error };
   const { user, batch } = owned;
 
-  if (batch.status === "APPLIED") return { error: "Ce lot a déjà été appliqué." };
+  if (batch.status === "APPLIED")
+    return { error: "Ce lot a déjà été appliqué." };
   if (batch.status !== "ANALYZED" && batch.status !== "APPLYING") {
     return { error: "Ce lot doit d'abord être analysé." };
   }
@@ -348,7 +355,10 @@ export async function applyImportChunk(batchId: string): Promise<ApplyProgress> 
   };
 
   const total = await db.importTarget.count({
-    where: { batchId: batch.id, resolution: { in: ["LINK", "CREATE"] as ImportResolution[] } },
+    where: {
+      batchId: batch.id,
+      resolution: { in: ["LINK", "CREATE"] as ImportResolution[] },
+    },
   });
 
   const targets = await db.importTarget.findMany({
@@ -374,6 +384,13 @@ export async function applyImportChunk(batchId: string): Promise<ApplyProgress> 
             data: {
               appliedAt: new Date(),
               error: null,
+              // La fiche créée est mémorisée sur la cible : sans quoi une
+              // cible « CREATE » resterait sans lien vers ce qu'elle a
+              // produit — le rapport ne pourrait pas y renvoyer, et un rejeu
+              // (listes conservées) devrait la retrouver par similarité.
+              ...(target.resolution === "CREATE" && outcome.workId
+                ? { matchedWorkId: outcome.workId }
+                : {}),
               extra: {
                 ...((target.extra ?? {}) as object),
                 conflicts: outcome.conflicts,
@@ -468,14 +485,87 @@ async function finalizeImportBatch(batchId: string): Promise<void> {
   });
 
   // Une seule fois, en fin de course — surtout pas à chaque paquet.
-  for (const path of ["/", "/journal", "/watchlist", "/catalogue", "/a-completer"]) {
+  for (const path of [
+    "/",
+    "/journal",
+    "/watchlist",
+    "/catalogue",
+    "/a-completer",
+  ]) {
     revalidatePath(path);
   }
   revalidatePath(`/import/${batchId}`);
 }
 
+/**
+ * Reprend les fichiers conservés bruts d'un lot (lot 2 → lot 3, S9).
+ *
+ * L'astuce est de **ne pas toucher au pipeline** : plutôt que de relâcher la
+ * garde qui interdit de ré-analyser un lot appliqué — ce qui recréerait ses
+ * cibles — on recopie les fichiers `parsed = false` dans un lot neuf. L'analyse,
+ * le rapprochement et l'application normaux font le reste, et les films des
+ * listes déjà créés par le lot d'origine se rattachent à leurs fiches par la
+ * recherche floue, exactement comme n'importe quel diary.
+ */
+export async function replayRetainedFiles(
+  batchId: string,
+): Promise<{ ok: true; batchId: string } | { error: string }> {
+  const owned = await ownedBatch(batchId);
+  if (!owned.ok) return { error: owned.error };
+  const { user, batch } = owned;
+
+  if (batch.status === "APPLYING") {
+    return { error: "Application en cours : réessayez dans un instant." };
+  }
+
+  const retained = batch.files.filter((f) => !f.parsed);
+  if (retained.length === 0) {
+    return { error: "Ce lot n'a aucun fichier conservé à reprendre." };
+  }
+
+  const created = await db.$transaction(async (tx) => {
+    const next = await tx.importBatch.create({
+      data: {
+        userId: user.id,
+        source: batch.source,
+        status: "UPLOADED",
+        label: `Listes — reprise du lot du ${batch.createdAt.toLocaleDateString("fr-FR")}`,
+        options: {
+          ...((batch.options ?? {}) as object),
+          importLists: true,
+          retainLists: false,
+        },
+        files: {
+          create: retained.map((f) => ({
+            name: f.name,
+            bytes: f.bytes,
+            checksum: f.checksum,
+            content: f.content,
+            parsed: false,
+          })),
+        },
+      },
+      select: { id: true },
+    });
+
+    // Le lot d'origine a rendu ses fichiers : il ne les propose plus.
+    await tx.importFile.updateMany({
+      where: { batchId: batch.id, parsed: false },
+      data: { parsed: true },
+    });
+
+    return next;
+  });
+
+  revalidatePath("/import");
+  revalidatePath(`/import/${batch.id}`);
+  return { ok: true, batchId: created.id };
+}
+
 /** Abandonne un lot sans le supprimer (garde la trace des fichiers). */
-export async function cancelImportBatch(batchId: string): Promise<ActionResult> {
+export async function cancelImportBatch(
+  batchId: string,
+): Promise<ActionResult> {
   const owned = await ownedBatch(batchId);
   if (!owned.ok) return { error: owned.error };
   if (owned.batch.status === "APPLIED") {
@@ -492,7 +582,9 @@ export async function cancelImportBatch(batchId: string): Promise<ActionResult> 
 }
 
 /** Supprime un lot et tout ce qu'il contient (les œuvres créées restent). */
-export async function deleteImportBatch(batchId: string): Promise<ActionResult> {
+export async function deleteImportBatch(
+  batchId: string,
+): Promise<ActionResult> {
   const owned = await ownedBatch(batchId);
   if (!owned.ok) return { error: owned.error };
   if (owned.batch.status === "APPLYING") {

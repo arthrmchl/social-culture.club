@@ -10,7 +10,14 @@ export function allowedStates(type: WorkType): WorkStatusState[] {
       return ["WANT", "COMPLETED", "DROPPED"];
     case "SERIES":
     case "ANIME":
-      return ["WANT", "IN_PROGRESS", "CAUGHT_UP", "ON_HOLD", "DROPPED", "COMPLETED"];
+      return [
+        "WANT",
+        "IN_PROGRESS",
+        "CAUGHT_UP",
+        "ON_HOLD",
+        "DROPPED",
+        "COMPLETED",
+      ];
     case "BOOK":
     case "ONE_SHOT":
     case "BD_SERIES":
@@ -19,7 +26,10 @@ export function allowedStates(type: WorkType): WorkStatusState[] {
   }
 }
 
-export function isStateAllowed(type: WorkType, state: WorkStatusState): boolean {
+export function isStateAllowed(
+  type: WorkType,
+  state: WorkStatusState,
+): boolean {
   return allowedStates(type).includes(state);
 }
 
@@ -61,6 +71,8 @@ export function stateLabel(type: WorkType, state: WorkStatusState): string {
 }
 
 /** États considérés « actifs » (en cours de consommation) pour l'accueil. */
-export function isActiveState(state: WorkStatusState | null | undefined): boolean {
+export function isActiveState(
+  state: WorkStatusState | null | undefined,
+): boolean {
   return state === "IN_PROGRESS";
 }

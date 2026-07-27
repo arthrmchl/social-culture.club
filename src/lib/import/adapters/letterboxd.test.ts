@@ -16,7 +16,9 @@ describe("détection de la source", () => {
 
   it("ne reconnaît pas un export étranger", () => {
     expect(
-      letterboxdAdapter.detect([{ name: "library.csv", content: "Title,Author\n" }]),
+      letterboxdAdapter.detect([
+        { name: "library.csv", content: "Title,Author\n" },
+      ]),
     ).toBe(0);
   });
 });
@@ -28,8 +30,8 @@ describe("fusion des fichiers (la règle qui évite les doublons)", () => {
   });
 
   it("rattache la critique au bon visionnage plutôt que d'en créer un", () => {
-    const [premier] = logsOf("Dune").filter(
-      (e) => e.loggedAt?.toISOString().startsWith("2026-03-14"),
+    const [premier] = logsOf("Dune").filter((e) =>
+      e.loggedAt?.toISOString().startsWith("2026-03-14"),
     );
     expect(premier.reviewText).toContain("claque visuelle");
     expect(premier.reviewText).toContain("Le sable");
@@ -43,7 +45,9 @@ describe("fusion des fichiers (la règle qui évite les doublons)", () => {
 
   it("ne reprend de watched.csv que les films absents du journal", () => {
     expect(logsOf("Blade Runner 2049")).toHaveLength(1);
-    expect(logsOf("Dune").some((e) => e.sourceFile === "watched.csv")).toBe(false);
+    expect(logsOf("Dune").some((e) => e.sourceFile === "watched.csv")).toBe(
+      false,
+    );
   });
 
   it("laisse sans date une reprise de watched.csv", () => {
@@ -68,9 +72,24 @@ describe("valeurs importées", () => {
     expect(logsOf("Dune").some((e) => e.isRewatch)).toBe(true);
   });
 
-  it("reprend les tags comme contexte", () => {
+  it("reprend les tags comme étiquettes (lot 3, S10)", () => {
     const [premier] = logsOf("Dune");
-    expect(premier.context).toBe("science-fiction, cinéma");
+    expect(premier.tags).toEqual(["science-fiction", "cinéma"]);
+    // Le contexte retrouve son sens propre (F3, D10) : il n'est plus le
+    // fourre-tout des étiquettes faute de modèle.
+    expect(premier.context).toBeNull();
+  });
+
+  it("verse encore les tags dans le contexte si on ne les importe pas", () => {
+    const sansTags = letterboxdAdapter.parse(files, {
+      ...DEFAULT_IMPORT_OPTIONS,
+      importTags: false,
+    });
+    const premier = sansTags.events.find(
+      (e) => e.kind === "LOG" && e.work.titleFr === "Dune",
+    );
+    expect(premier?.context).toBe("science-fiction, cinéma");
+    expect(premier?.tags).toEqual([]);
   });
 
   it("reprend l'année et l'identifiant de la source", () => {
@@ -104,14 +123,41 @@ describe("valeurs importées", () => {
 });
 
 describe("listes et fichiers non exploités", () => {
-  it("conserve les listes sans les appliquer", () => {
-    expect(result.retained.map((f) => f.name)).toEqual(["lists/mes-favoris.csv"]);
-    expect(result.events.some((e) => e.kind === "LIST_ITEM")).toBe(false);
+  it("reprend les listes en événements LIST_ITEM (lot 3, S9)", () => {
+    // Le lot 2 les conservait brutes faute de modèle ; elles sont désormais
+    // appliquées, et plus rien n'est mis de côté.
+    expect(result.retained).toEqual([]);
+
+    const items = result.events.filter((e) => e.kind === "LIST_ITEM");
+    expect(items).toHaveLength(2);
+    expect(items.map((e) => e.work.titleFr)).toEqual(["Dune", "Arrival"]);
+    expect(items[0].list).toMatchObject({
+      key: "letterboxd:list:mes-favoris",
+      name: "Mes favoris",
+      description: "Une liste de test",
+      position: 1,
+      isRanked: true,
+    });
+    // Le même slug que le diary : les éléments se rapprochent des mêmes fiches.
+    expect(items[0].work.externalId).toBe("letterboxd:dune-2021");
+  });
+
+  it("conserve les listes brutes si on ne les importe pas", () => {
+    const sansListes = letterboxdAdapter.parse(files, {
+      ...DEFAULT_IMPORT_OPTIONS,
+      importLists: false,
+    });
+    expect(sansListes.retained.map((f) => f.name)).toEqual([
+      "lists/mes-favoris.csv",
+    ]);
+    expect(sansListes.events.some((e) => e.kind === "LIST_ITEM")).toBe(false);
   });
 
   it("signale les fichiers non exploités", () => {
     expect(
-      result.warnings.some((w) => w.file === "profile.csv" && w.level === "info"),
+      result.warnings.some(
+        (w) => w.file === "profile.csv" && w.level === "info",
+      ),
     ).toBe(true);
   });
 });
@@ -143,7 +189,10 @@ describe("options", () => {
 
 describe("robustesse", () => {
   it("signale une erreur plutôt que de planter sur des fichiers vides", () => {
-    const r = letterboxdAdapter.parse([{ name: "diary.csv", content: "" }], DEFAULT_IMPORT_OPTIONS);
+    const r = letterboxdAdapter.parse(
+      [{ name: "diary.csv", content: "" }],
+      DEFAULT_IMPORT_OPTIONS,
+    );
     expect(r.events).toHaveLength(0);
     expect(r.warnings.some((w) => w.level === "error")).toBe(true);
   });
@@ -157,7 +206,9 @@ describe("robustesse", () => {
       DEFAULT_IMPORT_OPTIONS,
     );
     expect(
-      r.warnings.some((w) => w.file === "diary.csv" && w.message.includes("name")),
+      r.warnings.some(
+        (w) => w.file === "diary.csv" && w.message.includes("name"),
+      ),
     ).toBe(true);
     expect(r.events.some((e) => e.kind === "WATCHLIST")).toBe(true);
   });

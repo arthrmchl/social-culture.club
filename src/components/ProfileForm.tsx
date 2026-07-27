@@ -45,7 +45,9 @@ export function ProfileForm({
             pattern="[a-z0-9_]+"
             required
           />
-          <FieldHint>Utilisé dans l'URL de votre profil public (lot 4).</FieldHint>
+          <FieldHint>
+            Utilisé dans l'URL de votre profil public (lot 4).
+          </FieldHint>
         </div>
         <div>
           <Label htmlFor="email">Adresse e-mail</Label>
@@ -53,7 +55,12 @@ export function ProfileForm({
         </div>
         <div>
           <Label htmlFor="bio">Biographie</Label>
-          <Textarea id="bio" name="bio" defaultValue={initial.bio} maxLength={500} />
+          <Textarea
+            id="bio"
+            name="bio"
+            defaultValue={initial.bio}
+            maxLength={500}
+          />
         </div>
 
         {state?.error && (

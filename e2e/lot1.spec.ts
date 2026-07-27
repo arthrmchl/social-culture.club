@@ -70,7 +70,9 @@ test("film : note, j'aime, entrée de journal (revisionnage)", async () => {
   // Entrée de journal marquée revisionnage.
   await page.getByRole("button", { name: /Ajouter au journal/ }).click();
   await page.getByLabel("Revisionnage / relecture").check();
-  await page.getByRole("button", { name: "Enregistrer" }).click();
+  // `exact` : la fiche porte d'autres boutons dont le nom commence par
+  // « Enregistrer » (étiquettes, citations — lot 3).
+  await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
 
   await expect(page.getByText(/1 visionnage au journal/)).toBeVisible();
 });
@@ -127,7 +129,11 @@ test("livre : progression de lecture met le statut à « en cours »", async () 
 test("watchlist : un film « à voir » apparaît dans /watchlist", async () => {
   await createWork({ title: WATCH, year: "2020" });
 
-  await page.locator("select").selectOption({ label: "À voir" });
+  const status = page.locator("select");
+  await status.selectOption({ label: "À voir" });
+  // Le sélecteur se désactive le temps de l'action serveur : attendre qu'il
+  // redevienne actif, sinon la navigation peut devancer l'écriture.
+  await expect(status).toBeEnabled();
   await page.goto("/watchlist");
   await expect(
     page.getByRole("link", { name: new RegExp(WATCH) }),

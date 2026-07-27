@@ -38,7 +38,13 @@ export function SignInForm({ resetDone }: { resetDone?: boolean }) {
       <form action={action} className="flex flex-col gap-4">
         <div>
           <Label htmlFor="email">Adresse e-mail</Label>
-          <Input id="email" name="email" type="email" autoComplete="email" required />
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            required
+          />
         </div>
         <div>
           <Label htmlFor="password">Mot de passe</Label>
@@ -104,7 +110,13 @@ export function SignUpForm({ initialCode }: { initialCode?: string }) {
         </div>
         <div>
           <Label htmlFor="email">Adresse e-mail</Label>
-          <Input id="email" name="email" type="email" autoComplete="email" required />
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            required
+          />
         </div>
         <div>
           <Label htmlFor="password">Mot de passe</Label>

@@ -8,13 +8,33 @@ import { cn } from "@/lib/utils";
 
 type NavItem = { href: string; label: string; emoji: string };
 
+/**
+ * Les six entrées de la barre mobile (N1) — elle est pleine par construction.
+ *
+ * Depuis le lot 3, la 4ᵉ place revient à « Bibliothèque » plutôt qu'au
+ * catalogue : consulter ses propres œuvres est le geste quotidien, explorer
+ * le catalogue partagé de toute l'instance ne l'est pas. Le catalogue reste à
+ * un clic — barre du bureau, recherche, profil, et lien en tête de la
+ * bibliothèque, qui est aussi l'endroit où la distinction se dit.
+ */
 const ITEMS: NavItem[] = [
   { href: "/", label: "Accueil", emoji: "🏠" },
   { href: "/recherche", label: "Recherche", emoji: "🔎" },
   { href: "/creer", label: "Créer", emoji: "➕" },
-  { href: "/catalogue", label: "Catalogue", emoji: "📚" },
+  { href: "/bibliotheque", label: "Ma biblio", emoji: "📚" },
   { href: "/journal", label: "Journal", emoji: "📓" },
   { href: "/profil", label: "Profil", emoji: "👤" },
+];
+
+/**
+ * Entrées du bureau uniquement : la barre mobile est pleine, elles sont
+ * atteignables au téléphone depuis `/profil` (règle du lot 2, étendue au 3).
+ */
+const DESKTOP_ONLY: { href: string; label: string; adminOnly?: boolean }[] = [
+  { href: "/catalogue", label: "Catalogue" },
+  { href: "/listes", label: "Listes" },
+  { href: "/import", label: "Importer" },
+  { href: "/invitations", label: "Invitations", adminOnly: true },
 ];
 
 function isActive(pathname: string, href: string): boolean {
@@ -39,7 +59,10 @@ export function NavBar({
           <Link href="/" className="font-bold tracking-tight">
             SCC
           </Link>
-          <nav className="hidden gap-1 sm:flex" aria-label="Navigation principale">
+          <nav
+            className="hidden gap-1 sm:flex"
+            aria-label="Navigation principale"
+          >
             {ITEMS.map((item) => (
               <Link
                 key={item.href}
@@ -54,31 +77,21 @@ export function NavBar({
                 {item.label}
               </Link>
             ))}
-            {/* La barre mobile est pleine : ces entrées restent au bureau,
-                et sont accessibles au mobile depuis le profil (lot 2). */}
-            <Link
-              href="/import"
-              className={cn(
-                "rounded-md px-3 py-1.5 text-sm hover:bg-elevated",
-                isActive(pathname, "/import")
-                  ? "bg-elevated font-medium text-accent"
-                  : "text-muted",
-              )}
-            >
-              Importer
-            </Link>
-            {isAdmin && (
-              <Link
-                href="/invitations"
-                className={cn(
-                  "rounded-md px-3 py-1.5 text-sm hover:bg-elevated",
-                  isActive(pathname, "/invitations")
-                    ? "bg-elevated font-medium text-accent"
-                    : "text-muted",
-                )}
-              >
-                Invitations
-              </Link>
+            {DESKTOP_ONLY.filter((item) => !item.adminOnly || isAdmin).map(
+              (item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "rounded-md px-3 py-1.5 text-sm hover:bg-elevated",
+                    isActive(pathname, item.href)
+                      ? "bg-elevated font-medium text-accent"
+                      : "text-muted",
+                  )}
+                >
+                  {item.label}
+                </Link>
+              ),
             )}
           </nav>
           <div className="ml-auto flex items-center gap-2">

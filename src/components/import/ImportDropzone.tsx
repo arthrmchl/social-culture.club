@@ -69,7 +69,9 @@ export function ImportDropzone() {
     <div className="flex flex-col gap-4">
       {/* Choix de la source */}
       <div>
-        <p className="mb-2 text-sm font-medium">D&apos;où viennent vos données ?</p>
+        <p className="mb-2 text-sm font-medium">
+          D&apos;où viennent vos données ?
+        </p>
         <div className="flex flex-wrap gap-2">
           {IMPORTABLE_SOURCES.map((s) => (
             <button
@@ -180,7 +182,10 @@ export function ImportDropzone() {
       )}
 
       <div>
-        <Button onClick={upload} disabled={sending || tooBig || files.length === 0}>
+        <Button
+          onClick={upload}
+          disabled={sending || tooBig || files.length === 0}
+        >
           {sending ? "Envoi…" : "Analyser ces fichiers"}
         </Button>
       </div>

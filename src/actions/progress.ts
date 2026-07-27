@@ -1,19 +1,13 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { revalidateWork } from "./revalidate";
 import { episodesUpTo, parseEpisodeCode } from "@/lib/progress";
 import { recomputeSeriesState, recomputeTomesState } from "@/lib/tracking";
 import type { TomeState } from "@/generated/prisma/enums";
 import type { ActionResult } from "./status";
-
-function revalidateWork(workId: string) {
-  revalidatePath(`/oeuvre/${workId}`);
-  revalidatePath("/");
-  revalidatePath("/journal");
-}
 
 const dateSchema = z.string().datetime().nullable().optional();
 
@@ -83,7 +77,11 @@ export async function markSeasonWatched(
   await db.$transaction(async (tx) => {
     if (watched && episodeIds.length > 0) {
       const when =
-        watchedAt === null ? null : watchedAt ? new Date(watchedAt) : new Date();
+        watchedAt === null
+          ? null
+          : watchedAt
+            ? new Date(watchedAt)
+            : new Date();
 
       const entry = await tx.journalEntry.create({
         data: {
@@ -143,7 +141,8 @@ export async function markUpTo(
     episodeNumber: e.number,
   }));
   const targetIds = episodesUpTo(refs, target);
-  if (targetIds.length === 0) return { error: "Aucun épisode jusqu'à cette cible." };
+  if (targetIds.length === 0)
+    return { error: "Aucun épisode jusqu'à cette cible." };
 
   await db.$transaction(async (tx) => {
     const already = await tx.episodeWatch.findMany({

@@ -1,6 +1,8 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { scoreToStars } from "@/lib/rating";
+import { editionLabel, omnibusLabel } from "@/lib/editions";
+import { scopeLabel } from "@/lib/goals";
 import { toCsv, type CsvColumn } from "./csv";
 import {
   EXPORT_FORMAT,
@@ -24,60 +26,109 @@ export async function collectUserExport(
 ): Promise<ExportedDocument> {
   const user = await db.user.findUniqueOrThrow({ where: { id: userId } });
 
-  const [userWorks, entries, userSeasons, watches, tomes, reading, imports] =
-    await Promise.all([
-      db.userWork.findMany({ where: { userId }, orderBy: { createdAt: "asc" } }),
-      db.journalEntry.findMany({
-        where: { userId },
-        orderBy: [{ loggedAt: "asc" }, { createdAt: "asc" }],
-        include: {
-          season: { select: { number: true } },
-          episode: {
-            select: { number: true, season: { select: { number: true } } },
+  const [
+    userWorks,
+    entries,
+    userSeasons,
+    watches,
+    tomes,
+    reading,
+    imports,
+    lists,
+    tags,
+    favorites,
+    quotes,
+    goals,
+  ] = await Promise.all([
+    db.userWork.findMany({ where: { userId }, orderBy: { createdAt: "asc" } }),
+    db.journalEntry.findMany({
+      where: { userId },
+      orderBy: [{ loggedAt: "asc" }, { createdAt: "asc" }],
+      include: {
+        season: { select: { number: true } },
+        episode: {
+          select: { number: true, season: { select: { number: true } } },
+        },
+        tome: { select: { number: true } },
+      },
+    }),
+    db.userSeason.findMany({
+      where: { userId },
+      include: {
+        season: {
+          select: { number: true, workId: true },
+        },
+      },
+    }),
+    db.episodeWatch.findMany({
+      where: { userId },
+      include: {
+        episode: {
+          select: {
+            number: true,
+            season: { select: { number: true, workId: true } },
           },
-          tome: { select: { number: true } },
         },
-      }),
-      db.userSeason.findMany({
-        where: { userId },
-        include: {
-          season: {
-            select: { number: true, workId: true },
+      },
+    }),
+    db.tomeProgress.findMany({
+      where: { userId },
+      include: { tome: { select: { number: true, workId: true } } },
+    }),
+    db.readingProgress.findMany({
+      where: { userId },
+      orderBy: { recordedAt: "asc" },
+    }),
+    db.importBatch.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        source: true,
+        status: true,
+        createdAt: true,
+        files: { select: { name: true, checksum: true, bytes: true } },
+      },
+    }),
+    db.list.findMany({
+      where: { userId },
+      orderBy: { createdAt: "asc" },
+      include: {
+        items: { orderBy: { position: "asc" } },
+      },
+    }),
+    db.tag.findMany({
+      where: { userId },
+      orderBy: { name: "asc" },
+      include: {
+        works: { select: { workId: true } },
+        entries: {
+          select: {
+            entry: { select: { workId: true, loggedAt: true } },
           },
         },
-      }),
-      db.episodeWatch.findMany({
-        where: { userId },
-        include: {
-          episode: {
-            select: {
-              number: true,
-              season: { select: { number: true, workId: true } },
-            },
-          },
-        },
-      }),
-      db.tomeProgress.findMany({
-        where: { userId },
-        include: { tome: { select: { number: true, workId: true } } },
-      }),
-      db.readingProgress.findMany({
-        where: { userId },
-        orderBy: { recordedAt: "asc" },
-      }),
-      db.importBatch.findMany({
-        where: { userId },
-        select: {
-          id: true,
-          source: true,
-          status: true,
-          createdAt: true,
-          files: { select: { name: true, checksum: true, bytes: true } },
-        },
-      }),
-    ]);
+      },
+    }),
+    db.favorite.findMany({
+      where: { userId },
+      orderBy: { position: "asc" },
+    }),
+    db.quote.findMany({
+      where: { userId },
+      orderBy: [{ workId: "asc" }, { page: "asc" }, { createdAt: "asc" }],
+      include: {
+        tome: { select: { number: true } },
+        edition: { select: { publisher: true, format: true, isbn: true } },
+      },
+    }),
+    db.goal.findMany({
+      where: { userId },
+      orderBy: [{ year: "desc" }, { scope: "asc" }],
+    }),
+  ]);
 
-  // Toutes les œuvres référencées, quelle que soit la voie.
+  // Toutes les œuvres référencées, quelle que soit la voie. Une œuvre présente
+  // dans une seule liste doit figurer au dictionnaire, sinon la ligne CSV
+  // correspondante sortirait sans titre.
   const workIds = new Set<string>([
     ...userWorks.map((u) => u.workId),
     ...entries.map((e) => e.workId),
@@ -85,6 +136,10 @@ export async function collectUserExport(
     ...userSeasons.map((s) => s.season.workId),
     ...watches.map((w) => w.episode.season.workId),
     ...tomes.map((t) => t.tome.workId),
+    ...lists.flatMap((l) => l.items.map((i) => i.workId)),
+    ...tags.flatMap((t) => t.works.map((w) => w.workId)),
+    ...favorites.map((f) => f.workId),
+    ...quotes.map((q) => q.workId),
   ]);
 
   const works = await collectWorks([...workIds]);
@@ -168,6 +223,50 @@ export async function collectUserExport(
       createdAt: b.createdAt.toISOString(),
       files: b.files,
     })),
+    // Une liste vide reste dans l'export : c'est une intention, pas un vide.
+    lists: lists.map((l) => ({
+      title: l.title,
+      slug: l.slug,
+      description: l.description,
+      isRanked: l.isRanked,
+      isPinned: l.isPinned,
+      createdAt: l.createdAt.toISOString(),
+      importKey: l.importKey,
+      items: l.items.map((i) => ({
+        workId: i.workId,
+        position: i.position,
+        note: i.note,
+        addedAt: i.createdAt.toISOString(),
+      })),
+    })),
+    tags: tags.map((t) => ({
+      name: t.name,
+      slug: t.slug,
+      works: t.works.map((w) => w.workId),
+      entries: t.entries.map((e) => ({
+        workId: e.entry.workId,
+        loggedAt: iso(e.entry.loggedAt),
+      })),
+    })),
+    favorites: favorites.map((f) => ({
+      position: f.position,
+      workId: f.workId,
+    })),
+    quotes: quotes.map((q) => ({
+      workId: q.workId,
+      tomeNumber: q.tome?.number ?? null,
+      edition: q.edition ? editionLabel(q.edition) : null,
+      text: q.text,
+      page: q.page,
+      note: q.note,
+      createdAt: q.createdAt.toISOString(),
+    })),
+    goals: goals.map((g) => ({
+      year: g.year,
+      scope: g.scope,
+      scopeLabel: scopeLabel(g.scope),
+      target: g.target,
+    })),
   };
 }
 
@@ -187,6 +286,7 @@ async function collectWorks(ids: string[]) {
           include: { _count: { select: { episodes: true } } },
         },
         tomes: { orderBy: { number: "asc" } },
+        editions: { orderBy: { createdAt: "asc" } },
       },
     });
 
@@ -203,7 +303,10 @@ async function collectWorks(ids: string[]) {
         isbn: w.isbn,
         needsCompletion: w.needsCompletion,
         genres: w.genres.map((g) => g.genre.name),
-        creators: w.creators.map((c) => ({ name: c.person.name, role: c.role })),
+        creators: w.creators.map((c) => ({
+          name: c.person.name,
+          role: c.role,
+        })),
         seasons: w.seasons.map((s) => ({
           number: s.number,
           title: s.title,
@@ -213,6 +316,16 @@ async function collectWorks(ids: string[]) {
           number: t.number,
           title: t.title,
           pageCount: t.pageCount,
+        })),
+        editions: w.editions.map((e) => ({
+          label: editionLabel(e),
+          format: e.format,
+          publisher: e.publisher,
+          isbn: e.isbn,
+          pageCount: e.pageCount,
+          isDefault: e.isDefault,
+          coversTomeFrom: e.coversTomeFrom,
+          coversTomeTo: e.coversTomeTo,
         })),
         coverUrl: w.coverImageId ? `/api/uploads/${w.coverImageId}` : null,
       });
@@ -307,14 +420,143 @@ export function entityToCsv(doc: ExportedDocument, entity: CsvEntity): string {
 
     case "watchlist":
       return toCsv(
-        (doc.userWorks as UserWorkRow[]).filter((u) => u.watchlistedAt !== null),
+        (doc.userWorks as UserWorkRow[]).filter(
+          (u) => u.watchlistedAt !== null,
+        ),
         [
           col("Œuvre", titre),
           col("Identifiant œuvre", (r) => r.workId),
           col("Ajouté le", (r) => r.watchlistedAt),
         ],
       );
+
+    // Une ligne par élément, l'en-tête de liste répété : le fichier reste
+    // lisible sans l'application (N4). Une liste vide garde une ligne, sinon
+    // elle disparaîtrait de l'export.
+    case "listes":
+      return toCsv(flattenLists(doc.lists as ListRow[]), [
+        col("Liste", (r) => r.title),
+        col("Description", (r) => r.description),
+        col("Ordonnée", (r) => r.isRanked),
+        col("Épinglée", (r) => r.isPinned),
+        col("Position", (r) => r.position),
+        col("Œuvre", (r) => (r.workId ? (titles.get(r.workId) ?? "") : "")),
+        col("Identifiant œuvre", (r) => r.workId),
+        col("Commentaire", (r) => r.note),
+      ]);
+
+    case "tags":
+      return toCsv(flattenTags(doc.tags as TagRow[]), [
+        col("Étiquette", (r) => r.name),
+        col("Cible", (r) => r.target),
+        col("Œuvre", (r) => (r.workId ? (titles.get(r.workId) ?? "") : "")),
+        col("Identifiant œuvre", (r) => r.workId),
+        col("Date de journal", (r) => r.loggedAt),
+      ]);
+
+    case "favoris":
+      return toCsv(doc.favorites as FavoriteRow[], [
+        col("Position", (r) => r.position + 1),
+        col("Œuvre", titre),
+        col("Identifiant œuvre", (r) => r.workId),
+      ]);
+
+    case "citations":
+      return toCsv(doc.quotes as QuoteRow[], [
+        col("Œuvre", titre),
+        col("Identifiant œuvre", (r) => r.workId),
+        col("Tome", (r) => r.tomeNumber),
+        col("Édition", (r) => r.edition),
+        col("Page", (r) => r.page),
+        col("Texte", (r) => r.text),
+        col("Commentaire", (r) => r.note),
+        col("Noté le", (r) => r.createdAt),
+      ]);
+
+    case "objectifs":
+      return toCsv(doc.goals as GoalRow[], [
+        col("Année", (r) => r.year),
+        col("Portée", (r) => r.scopeLabel),
+        col("Code portée", (r) => r.scope),
+        col("Objectif", (r) => r.target),
+      ]);
+
+    case "editions":
+      return toCsv(flattenEditions(doc.works), [
+        col("Œuvre", (r) => r.title),
+        col("Identifiant œuvre", (r) => r.workId),
+        col("Libellé", (r) => r.label),
+        col("Format", (r) => r.format),
+        col("Éditeur", (r) => r.publisher),
+        col("ISBN", (r) => r.isbn),
+        col("Pages", (r) => r.pageCount),
+        col("Par défaut", (r) => r.isDefault),
+        col("Tomes couverts", (r) => r.covers),
+      ]);
   }
+}
+
+/** Listes -> une ligne par élément (et une ligne pour une liste vide). */
+function flattenLists(lists: ListRow[]): FlatListRow[] {
+  const out: FlatListRow[] = [];
+  for (const list of lists) {
+    const head = {
+      title: list.title,
+      description: list.description,
+      isRanked: list.isRanked,
+      isPinned: list.isPinned,
+    };
+    if (list.items.length === 0) {
+      out.push({ ...head, position: null, workId: null, note: null });
+      continue;
+    }
+    for (const item of list.items) {
+      out.push({
+        ...head,
+        // Les positions sont stockées à partir de 0, affichées à partir de 1.
+        position: item.position + 1,
+        workId: item.workId,
+        note: item.note,
+      });
+    }
+  }
+  return out;
+}
+
+/** Étiquettes -> une ligne par usage, œuvre ou entrée de journal. */
+function flattenTags(tags: TagRow[]): FlatTagRow[] {
+  const out: FlatTagRow[] = [];
+  for (const tag of tags) {
+    for (const workId of tag.works) {
+      out.push({ name: tag.name, target: "œuvre", workId, loggedAt: null });
+    }
+    for (const entry of tag.entries) {
+      out.push({
+        name: tag.name,
+        target: "journal",
+        workId: entry.workId,
+        loggedAt: entry.loggedAt,
+      });
+    }
+  }
+  return out;
+}
+
+/** Éditions -> une ligne par édition, rattachée au titre de son œuvre. */
+function flattenEditions(works: ExportedDocument["works"]): FlatEditionRow[] {
+  return works.flatMap((w) =>
+    w.editions.map((e) => ({
+      title: w.titleFr,
+      workId: w.id,
+      label: e.label,
+      format: e.format,
+      publisher: e.publisher,
+      isbn: e.isbn,
+      pageCount: e.pageCount,
+      isDefault: e.isDefault,
+      covers: omnibusLabel(e),
+    })),
+  );
 }
 
 // Types de lecture des lignes du document (le document lui-même reste
@@ -358,6 +600,60 @@ type WatchRow = {
   watchedAt: string | null;
 };
 type TomeRow = { workId: string; tomeNumber: number; state: string };
+type ListRow = {
+  title: string;
+  description: string | null;
+  isRanked: boolean;
+  isPinned: boolean;
+  items: { workId: string; position: number; note: string | null }[];
+};
+type FlatListRow = {
+  title: string;
+  description: string | null;
+  isRanked: boolean;
+  isPinned: boolean;
+  position: number | null;
+  workId: string | null;
+  note: string | null;
+};
+type TagRow = {
+  name: string;
+  works: string[];
+  entries: { workId: string; loggedAt: string | null }[];
+};
+type FlatTagRow = {
+  name: string;
+  target: string;
+  workId: string;
+  loggedAt: string | null;
+};
+type FavoriteRow = { position: number; workId: string };
+type QuoteRow = {
+  workId: string;
+  tomeNumber: number | null;
+  edition: string | null;
+  text: string;
+  page: number | null;
+  note: string | null;
+  createdAt: string;
+};
+type GoalRow = {
+  year: number;
+  scope: string;
+  scopeLabel: string;
+  target: number;
+};
+type FlatEditionRow = {
+  title: string;
+  workId: string;
+  label: string;
+  format: string | null;
+  publisher: string | null;
+  isbn: string | null;
+  pageCount: number | null;
+  isDefault: boolean;
+  covers: string | null;
+};
 type ReadingRow = {
   workId: string;
   page: number | null;
