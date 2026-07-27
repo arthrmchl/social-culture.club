@@ -1,9 +1,7 @@
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 import path from "node:path";
 
-const COVER = path.resolve(
-  "/private/tmp/claude-501/-Users-arthur83michel-Projects-social-culture-club/38c13dcc-f398-425c-a075-5104943f915c/scratchpad/cover.png",
-);
+const COVER = path.resolve(__dirname, "fixtures/cover.png");
 
 // Suffixe unique pour rejouer le scénario sans collision.
 const S = Date.now().toString(36);
@@ -84,7 +82,8 @@ test("générateur de tomes pour un manga", async () => {
   await page.getByRole("button", { name: "Créer la fiche" }).click();
 
   await expect(page).toHaveURL(/\/oeuvre\/.+/);
-  await expect(page.getByText(/5 tomes/)).toBeVisible();
+  // Le suivi au tome (lot 1) affiche un bouton par tome généré.
+  await expect(page.getByRole("button", { name: "T5", exact: true })).toBeVisible();
 });
 
 test("recherche floue tolérante aux fautes", async () => {

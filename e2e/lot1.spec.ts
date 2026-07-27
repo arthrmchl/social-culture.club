@@ -1,0 +1,135 @@
+import { test, expect, type BrowserContext, type Page } from "@playwright/test";
+import path from "node:path";
+
+const COVER = path.resolve(__dirname, "fixtures/cover.png");
+const S = Date.now().toString(36);
+
+// Compte administrateur du seed (le code d'invitation E2E est consommé par lot0).
+const ADMIN = { email: "admin@social-culture.club", password: "changeme123" };
+
+const FILM = `Suivi Film ${S}`;
+const SERIES = `Suivi Série ${S}`;
+const MANGA = `Suivi Manga ${S}`;
+const BOOK = `Suivi Livre ${S}`;
+const WATCH = `Suivi Watchlist ${S}`;
+
+test.describe.configure({ mode: "serial" });
+
+let ctx: BrowserContext;
+let page: Page;
+
+test.beforeAll(async ({ browser }) => {
+  ctx = await browser.newContext();
+  page = await ctx.newPage();
+  // Connexion admin.
+  await page.goto("/connexion");
+  await page.fill("#email", ADMIN.email);
+  await page.fill("#password", ADMIN.password);
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  await expect(page).toHaveURL("http://localhost:3000/");
+});
+test.afterAll(async () => {
+  await ctx.close();
+});
+
+async function createWork(opts: {
+  title: string;
+  year: string;
+  type?: RegExp; // libellé du bouton de type
+  seasons?: string;
+  episodes?: string;
+  tomes?: string;
+  pages?: string;
+}) {
+  await page.goto("/creer");
+  if (opts.type) await page.getByRole("button", { name: opts.type }).click();
+  await page.fill("#titleFr", opts.title);
+  await page.fill("#year", opts.year);
+  await page.setInputFiles('input[type="file"]', COVER);
+  await expect(page.locator('img[alt="Aperçu du visuel"]')).toBeVisible();
+  if (opts.seasons) await page.fill("#seasonsCount", opts.seasons);
+  if (opts.episodes) await page.fill("#episodesPerSeason", opts.episodes);
+  if (opts.tomes) await page.fill("#tomesCount", opts.tomes);
+  if (opts.pages) await page.fill("#pageCount", opts.pages);
+  await page.getByRole("button", { name: "Créer la fiche" }).click();
+  await expect(page).toHaveURL(/\/oeuvre\/.+/);
+}
+
+test("film : note, j'aime, entrée de journal (revisionnage)", async () => {
+  await createWork({ title: FILM, year: "2012" });
+
+  // Note (4 étoiles) → le bouton « Effacer » apparaît.
+  await page.getByRole("button", { name: "4 étoiles", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Effacer" })).toBeVisible();
+
+  // J'aime.
+  const like = page.getByRole("button", { name: "J'aime" });
+  await like.click();
+  await expect(like).toHaveAttribute("aria-pressed", "true");
+
+  // Entrée de journal marquée revisionnage.
+  await page.getByRole("button", { name: /Ajouter au journal/ }).click();
+  await page.getByLabel("Revisionnage / relecture").check();
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+
+  await expect(page.getByText(/1 visionnage au journal/)).toBeVisible();
+});
+
+test("le film consigné apparaît dans le journal global", async () => {
+  await page.goto("/journal");
+  await expect(
+    page.getByRole("link", { name: new RegExp(FILM) }).first(),
+  ).toBeVisible();
+});
+
+test("série : marquage d'une saison → statut « à jour »", async () => {
+  await createWork({
+    title: SERIES,
+    year: "2016",
+    type: /Série/,
+    seasons: "1",
+    episodes: "3",
+  });
+
+  await page.locator("summary", { hasText: "Saison 1" }).click();
+  await page.getByLabel("Toute la saison vue").check();
+
+  await expect(page.getByText("3/3 vus")).toBeVisible();
+  // Passage automatique à « à jour » (T2).
+  await expect(page.locator("select")).toHaveValue("CAUGHT_UP");
+});
+
+test("manga : suivi au tome", async () => {
+  await createWork({
+    title: MANGA,
+    year: "1990",
+    type: /Manga/,
+    tomes: "3",
+  });
+
+  await expect(page.getByText("0/3 tome lu")).toBeVisible();
+  // à lire → en cours → lu (deux clics).
+  const t1 = page.getByRole("button", { name: "T1", exact: true });
+  await t1.click();
+  await t1.click();
+  await expect(page.getByText("1/3 tome lu")).toBeVisible();
+});
+
+test("livre : progression de lecture met le statut à « en cours »", async () => {
+  await createWork({ title: BOOK, year: "2001", type: /Livre/, pages: "300" });
+
+  await page.getByRole("spinbutton").first().fill("150");
+  await page.getByRole("button", { name: "Mettre à jour" }).click();
+
+  await expect(page.locator("select")).toHaveValue("IN_PROGRESS");
+});
+
+test("watchlist : un film « à voir » apparaît dans /watchlist", async () => {
+  await createWork({ title: WATCH, year: "2020" });
+
+  await page.locator("select").selectOption({ label: "À voir" });
+  await page.goto("/watchlist");
+  await expect(
+    page.getByRole("link", { name: new RegExp(WATCH) }),
+  ).toBeVisible();
+});

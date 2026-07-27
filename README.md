@@ -3,9 +3,16 @@
 Application web de suivi culturel unifiée — films, séries, animés, livres, BD et
 mangas — avec catalogue interne partagé, sans aucun référentiel externe (D6).
 
-Ce dépôt contient le **lot 0 — Fondations** : comptes sur invitation, modèle
-d'œuvre unifié, catalogue partagé, parcours de création éclair (S2), recherche
-interne floue et fiches pour les six médias.
+Ce dépôt contient les lots suivants :
+
+- **Lot 0 — Fondations** : comptes sur invitation, modèle d'œuvre unifié,
+  catalogue partagé, parcours de création éclair (S2), recherche interne floue
+  et fiches pour les six médias.
+- **Lot 1 — Suivi** : journal daté, notation (5 étoiles par demi-point, stockée
+  sur 10), j'aime, critiques markdown (spoiler repliable), statuts par média,
+  progression fine (épisodes, tomes, pages), watchlist et accueil « en cours ».
+  À ce stade, l'application remplace les trois services de référence en usage
+  solo — **jalon scénario A**.
 
 ## Stack
 
@@ -67,27 +74,46 @@ npm run dev            # http://localhost:3000
 
 ```
 prisma/
-  schema.prisma          Modèle unifié (œuvre, sous-unités, éditions, auth)
-  migrations/            Init + extension pg_trgm (index GIN sur titleNormalized)
+  schema.prisma          Modèle unifié (œuvre, sous-unités, éditions, suivi, auth)
+  migrations/            Init + pg_trgm (index GIN géré par Prisma) + suivi lot 1
   seed.ts                Admin + invitation + genres
 src/
-  lib/                   db, auth, session, storage, search, text, generators, media
-  actions/               Server actions : auth, invitation, work, profile, upload
-  components/            UI réutilisable + WorkForm, WorkCard, NavBar, CoverUpload…
+  lib/                   db, auth, session, storage, search, text, generators, media,
+                         rating, status, progress, tracking, markdown, dates
+  actions/               auth, invitation, work, profile, upload,
+                         status, journal, progress, season (suivi lot 1)
+  components/            UI réutilisable + WorkForm, WorkCard, NavBar, CoverUpload,
+                         RatingStars/StarInput/Stars, LikeButton, StatusSelect,
+                         ReviewEditor/ReviewContent, JournalEntryForm/Card,
+                         EpisodeTracker, TomeTracker, ReadingProgressWidget
   app/(auth)/            Connexion, inscription, mot de passe oublié, réinitialisation
-  app/(app)/             Accueil, recherche, création, catalogue, fiche, profil, invitations
+  app/(app)/             Accueil, recherche, création, catalogue, fiche, profil,
+                         journal, watchlist, invitations
   app/api/auth/          Handler better-auth
   app/api/uploads/[id]/  Service des visuels téléversés
   proxy.ts               Protection optimiste des routes (ex-middleware)
 ```
 
-## Décisions clés couvertes (lot 0)
+## Décisions clés couvertes
+
+Lot 0 :
 
 - **D6/D29** catalogue interne partagé, aucune API externe.
 - **D30** édition d'une fiche réservée au créateur et à l'administrateur.
 - **D31** création : titre + année + visuel obligatoires.
 - **D24** inscription en cercle privé, sur invitation.
 - **D8** modèle des éditions/intégrales prêt dès le lot 0 (UI au lot 3).
+
+Lot 1 :
+
+- **D3/S5** échelle unique (5 étoiles par demi-point), stockée sur 10 en interne.
+- **D4/S6** j'aime indépendant de la note.
+- **D5/T3** note et critique au niveau série et saison ; les épisodes se cochent
+  et se datent mais ne portent ni note ni critique.
+- **D10/F3** contexte de consommation, champ optionnel.
+- **T2** passage automatique à « à jour » / « terminé » selon la progression,
+  sans écraser un statut manuel (en pause, abandonné).
+- **L2** progression de lecture historisée (table `ReadingProgress`).
 
 ## Vérification manuelle (bout en bout)
 
@@ -105,8 +131,33 @@ Une fois la base démarrée et peuplée :
    inconnu → proposition de création pré-remplie.
 7. Consulter la **fiche** et le **catalogue** filtré par média.
 
-## Hors périmètre du lot 0
+Suivi (lot 1), sur une fiche :
 
-Journal, notes, statuts et progression (lot 1) ; imports/export (lot 2) ; listes,
-tags, favoris, citations, objectifs, gestion complète des éditions côté UI
-(lot 3) ; social (lot 4) ; statistiques, rétrospective, PWA (lot 5).
+8. **Noter** (5 étoiles par demi-point), **aimer**, choisir un **statut** (les
+   états proposés dépendent du média), écrire une **critique** markdown (avec
+   spoiler repliable).
+9. **Ajouter au journal** : date précise / mois / année / inconnue, note,
+   critique, revisionnage, contexte. L'entrée apparaît dans le **journal** de la
+   fiche et dans le **journal global** (`/journal`, filtrable par média).
+10. **Série/animé** : cocher un épisode, cocher une saison entière, « vu jusqu'à
+    SxxEyy » ; le statut passe à **« à jour »** quand tous les épisodes sont vus ;
+    noter/critiquer une **saison**.
+11. **BD/manga** : cliquer les tomes (à lire → en cours → lu) ; l'agrégat
+    « X/Y tomes lus » et le statut se mettent à jour.
+12. **Livre** : mettre à jour la **page courante** (depuis la fiche ou l'accueil) ;
+    le statut passe à « en cours ».
+13. Marquer une œuvre **« à voir »** → elle apparaît dans **`/watchlist`**.
+
+Vérification de la couche données (lot 0 + lot 1) sans le navigateur :
+
+```bash
+npx tsx scripts/verify.ts   # crée des œuvres, coche épisodes/tomes, vérifie les auto-statuts
+npm test                    # tests unitaires (rating, status, progress, generators, text)
+npm run test:e2e            # parcours bout en bout Playwright (serveur dev requis sur :3000)
+```
+
+## Hors périmètre (lots suivants)
+
+Imports/export (lot 2) ; listes, tags, favoris, citations, objectifs annuels,
+gestion complète des éditions côté UI, bibliothèque riche (lot 3) ; social
+(lot 4) ; statistiques, rétrospective, PWA (lot 5).

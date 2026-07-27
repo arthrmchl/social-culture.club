@@ -13,6 +13,7 @@ const ITEMS: NavItem[] = [
   { href: "/recherche", label: "Recherche", emoji: "🔎" },
   { href: "/creer", label: "Créer", emoji: "➕" },
   { href: "/catalogue", label: "Catalogue", emoji: "📚" },
+  { href: "/journal", label: "Journal", emoji: "📓" },
   { href: "/profil", label: "Profil", emoji: "👤" },
 ];
 
