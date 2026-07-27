@@ -228,6 +228,29 @@ export async function duplicateWork(sourceId: string): Promise<never> {
   redirect(`/oeuvre/${copy.id}/modifier`);
 }
 
+/**
+ * Suppression d'une fiche — réservée à l'administrateur.
+ * Les données rattachées (sous-unités, suivi, journal de tous les
+ * utilisateurs) sont supprimées en cascade au niveau base (onDelete: Cascade).
+ */
+export async function deleteWork(workId: string): Promise<{ error: string } | never> {
+  const user = await requireUser();
+  if (!isAdmin(user)) {
+    return { error: "Seul l'administrateur peut supprimer une fiche." };
+  }
+
+  const work = await db.work.findUnique({
+    where: { id: workId },
+    select: { id: true },
+  });
+  if (!work) return { error: "Fiche introuvable." };
+
+  await db.work.delete({ where: { id: workId } });
+
+  revalidatePath("/catalogue");
+  redirect("/catalogue");
+}
+
 const editSchema = workSchema
   .pick({
     titleFr: true,
