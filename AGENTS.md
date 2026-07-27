@@ -33,6 +33,10 @@ Voir `README.md` pour la présentation et le démarrage.
 - **Droits** : une fiche d'œuvre n'est éditable que par son créateur ou l'admin
   (D30, `isAdmin`). Les données de suivi (journal, statuts, notes, progression)
   sont **individuelles** : toujours filtrer par `userId`.
+- **Suppression d'une œuvre** : réservée à l'**administrateur seul** (`deleteWork`,
+  plus restrictif que l'édition car destructif pour le suivi/journal de *tous* les
+  utilisateurs). La cascade est portée par la base (`onDelete: Cascade`), pas de
+  suppression manuelle des enfants.
 - **Notation** : échelle d'affichage 0,5–5 étoiles par demi-point, **stockée sur
   10** en base. Convertir uniquement à l'affichage/saisie via `src/lib/rating.ts`.
 - **Logique pure et testée** dans `src/lib/` (`rating`, `status`, `progress`,
