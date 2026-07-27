@@ -1,19 +1,12 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { revalidateWork } from "./revalidate";
 import { starsToScore } from "@/lib/rating";
 import { recomputeViewings } from "@/lib/tracking";
 import type { ActionResult } from "./status";
-
-function revalidateWork(workId: string) {
-  revalidatePath(`/oeuvre/${workId}`);
-  revalidatePath("/");
-  revalidatePath("/journal");
-  revalidatePath("/watchlist");
-}
 
 const entrySchema = z.object({
   workId: z.string().min(1),

@@ -10,58 +10,79 @@ import {
 import { requireUser } from "@/lib/session";
 import { db } from "@/lib/db";
 import { MEDIA, MEDIA_ORDER, usesPages } from "@/lib/media";
+import { ListCard } from "@/components/lists/ListCard";
 
 export default async function AccueilPage() {
   const user = await requireUser();
 
-  const [recent, total, inProgress, recentEntries] = await Promise.all([
-    db.work.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 12,
-      select: {
-        id: true,
-        type: true,
-        titleFr: true,
-        titleOriginal: true,
-        year: true,
-        coverImageId: true,
-        needsCompletion: true,
-      },
-    }),
-    db.work.count(),
-    db.userWork.findMany({
-      where: { userId: user.id, state: "IN_PROGRESS" },
-      orderBy: { updatedAt: "desc" },
-      take: 12,
-      include: {
-        work: {
-          select: {
-            id: true,
-            type: true,
-            titleFr: true,
-            titleOriginal: true,
-            year: true,
-            coverImageId: true,
-            needsCompletion: true,
-            pageCount: true,
+  const [recent, total, inProgress, recentEntries, pinnedLists] =
+    await Promise.all([
+      db.work.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 12,
+        select: {
+          id: true,
+          type: true,
+          titleFr: true,
+          titleOriginal: true,
+          year: true,
+          coverImageId: true,
+          needsCompletion: true,
+        },
+      }),
+      db.work.count(),
+      db.userWork.findMany({
+        where: { userId: user.id, state: "IN_PROGRESS" },
+        orderBy: { updatedAt: "desc" },
+        take: 12,
+        include: {
+          work: {
+            select: {
+              id: true,
+              type: true,
+              titleFr: true,
+              titleOriginal: true,
+              year: true,
+              coverImageId: true,
+              needsCompletion: true,
+              pageCount: true,
+            },
           },
         },
-      },
-    }),
-    db.journalEntry.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
-      take: 5,
-      include: {
-        season: { select: { number: true } },
-        episode: { select: { number: true } },
-        tome: { select: { number: true } },
-        work: {
-          select: { id: true, type: true, titleFr: true, coverImageId: true },
+      }),
+      db.journalEntry.findMany({
+        where: { userId: user.id },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        include: {
+          season: { select: { number: true } },
+          episode: { select: { number: true } },
+          tome: { select: { number: true } },
+          work: {
+            select: { id: true, type: true, titleFr: true, coverImageId: true },
+          },
         },
-      },
-    }),
-  ]);
+      }),
+      db.list.findMany({
+        where: { userId: user.id, isPinned: true },
+        orderBy: { updatedAt: "desc" },
+        take: 4,
+        select: {
+          slug: true,
+          title: true,
+          description: true,
+          isRanked: true,
+          isPinned: true,
+          coverImageId: true,
+          _count: { select: { items: true } },
+          items: {
+            take: 12,
+            orderBy: { position: "asc" },
+            select: { work: { select: { type: true } } },
+          },
+        },
+      }),
+    ]);
 
   const reads = inProgress.filter((uw) => usesPages(uw.work.type));
   const watching = inProgress.filter((uw) => !usesPages(uw.work.type));
@@ -152,6 +173,40 @@ export default async function AccueilPage() {
         )}
       </section>
 
+      {/* Listes épinglées (S9, S13) */}
+      {pinnedLists.length > 0 && (
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+              Listes épinglées
+            </h2>
+            <Link
+              href="/listes"
+              className="text-sm text-accent hover:underline"
+            >
+              Toutes mes listes
+            </Link>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {pinnedLists.map((l) => (
+              <ListCard
+                key={l.slug}
+                list={{
+                  slug: l.slug,
+                  title: l.title,
+                  description: l.description,
+                  isRanked: l.isRanked,
+                  isPinned: l.isPinned,
+                  coverImageId: l.coverImageId,
+                  count: l._count.items,
+                  types: [...new Set(l.items.map((i) => i.work.type))],
+                }}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Dernières entrées du journal (S13) */}
       {entries.length > 0 && (
         <section>
@@ -159,7 +214,10 @@ export default async function AccueilPage() {
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
               Dernières entrées
             </h2>
-            <Link href="/journal" className="text-sm text-accent hover:underline">
+            <Link
+              href="/journal"
+              className="text-sm text-accent hover:underline"
+            >
               Tout le journal
             </Link>
           </div>

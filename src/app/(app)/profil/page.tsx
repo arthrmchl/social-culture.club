@@ -28,7 +28,21 @@ export default async function ProfilPage() {
         }}
       />
 
-      {/* Accès mobile aux pages de données — la barre du bas est pleine. */}
+      {/* Accès mobile aux pages hors barre du bas — celle-ci est pleine. */}
+      <section className="mt-8">
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
+          Ma bibliothèque
+        </h2>
+        <Card className="flex flex-col divide-y divide-border p-0">
+          <Link href="/listes" className="px-4 py-3 text-sm hover:bg-elevated">
+            📋 Mes listes
+            <span className="block text-xs text-muted">
+              Classements et recueils, tous médias mêlés
+            </span>
+          </Link>
+        </Card>
+      </section>
+
       <section className="mt-8">
         <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
           Mes données

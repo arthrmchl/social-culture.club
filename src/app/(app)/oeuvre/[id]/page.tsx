@@ -2,7 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser, isAdmin } from "@/lib/session";
-import { MEDIA, usesEpisodes, usesTomes, usesPages, formatYear } from "@/lib/media";
+import {
+  MEDIA,
+  usesEpisodes,
+  usesTomes,
+  usesPages,
+  formatYear,
+} from "@/lib/media";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { StatusSelect } from "@/components/StatusSelect";
@@ -16,6 +22,7 @@ import { EpisodeTracker } from "@/components/EpisodeTracker";
 import { TomeTracker } from "@/components/TomeTracker";
 import { CoverPlaceholder } from "@/components/CoverPlaceholder";
 import { ReadingProgressWidget } from "@/components/ReadingProgressWidget";
+import { AddToListButton } from "@/components/lists/AddToListButton";
 import {
   JournalEntryCard,
   type JournalEntryCardData,
@@ -53,41 +60,53 @@ export default async function OeuvrePage({
   });
   if (!work) notFound();
 
-  const [userWork, watches, tomeProgress, userSeasons, entries, contextRows] =
-    await Promise.all([
-      db.userWork.findUnique({
-        where: { userId_workId: { userId: user.id, workId: id } },
-      }),
-      db.episodeWatch.findMany({
-        where: { userId: user.id, episode: { season: { workId: id } } },
-        select: { episodeId: true },
-      }),
-      db.tomeProgress.findMany({
-        where: { userId: user.id, tome: { workId: id } },
-        select: { tomeId: true, state: true },
-      }),
-      db.userSeason.findMany({
-        where: { userId: user.id, season: { workId: id } },
-      }),
-      db.journalEntry.findMany({
-        where: { userId: user.id, workId: id },
-        orderBy: [
-          { loggedAt: { sort: "desc", nulls: "last" } },
-          { createdAt: "desc" },
-        ],
-        include: {
-          season: { select: { number: true } },
-          episode: { select: { number: true } },
-          tome: { select: { number: true } },
-        },
-      }),
-      db.journalEntry.findMany({
-        where: { userId: user.id, context: { not: null } },
-        select: { context: true },
-        distinct: ["context"],
-        take: 20,
-      }),
-    ]);
+  const [
+    userWork,
+    watches,
+    tomeProgress,
+    userSeasons,
+    entries,
+    contextRows,
+    listMemberships,
+  ] = await Promise.all([
+    db.userWork.findUnique({
+      where: { userId_workId: { userId: user.id, workId: id } },
+    }),
+    db.episodeWatch.findMany({
+      where: { userId: user.id, episode: { season: { workId: id } } },
+      select: { episodeId: true },
+    }),
+    db.tomeProgress.findMany({
+      where: { userId: user.id, tome: { workId: id } },
+      select: { tomeId: true, state: true },
+    }),
+    db.userSeason.findMany({
+      where: { userId: user.id, season: { workId: id } },
+    }),
+    db.journalEntry.findMany({
+      where: { userId: user.id, workId: id },
+      orderBy: [
+        { loggedAt: { sort: "desc", nulls: "last" } },
+        { createdAt: "desc" },
+      ],
+      include: {
+        season: { select: { number: true } },
+        episode: { select: { number: true } },
+        tome: { select: { number: true } },
+      },
+    }),
+    db.journalEntry.findMany({
+      where: { userId: user.id, context: { not: null } },
+      select: { context: true },
+      distinct: ["context"],
+      take: 20,
+    }),
+    db.listItem.findMany({
+      where: { workId: id, list: { userId: user.id } },
+      select: { list: { select: { slug: true, title: true } } },
+      orderBy: { list: { title: "asc" } },
+    }),
+  ]);
 
   const media = MEDIA[work.type];
   const canEdit = work.createdById === user.id || isAdmin(user);
@@ -225,7 +244,12 @@ export default async function OeuvrePage({
                 </Button>
               </Link>
             ) : (
-              <Button variant="secondary" size="sm" disabled title="Bientôt (lot 4)">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled
+                title="Bientôt (lot 4)"
+              >
                 Proposer une correction
               </Button>
             )}
@@ -292,6 +316,27 @@ export default async function OeuvrePage({
             contextSuggestions={contextSuggestions}
           />
         </Card>
+      </section>
+
+      {/* Listes (lot 3, S9) */}
+      <section>
+        <SectionTitle>Mes listes</SectionTitle>
+        <div className="flex flex-col gap-3">
+          {listMemberships.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {listMemberships.map((m) => (
+                <Link
+                  key={m.list.slug}
+                  href={`/listes/${m.list.slug}`}
+                  className="rounded-full border border-border px-2.5 py-0.5 text-xs text-muted hover:bg-elevated"
+                >
+                  📋 {m.list.title}
+                </Link>
+              ))}
+            </div>
+          )}
+          <AddToListButton workId={work.id} />
+        </div>
       </section>
 
       {/* Progression fine */}

@@ -1,19 +1,13 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { revalidateWork } from "./revalidate";
 import { episodesUpTo, parseEpisodeCode } from "@/lib/progress";
 import { recomputeSeriesState, recomputeTomesState } from "@/lib/tracking";
 import type { TomeState } from "@/generated/prisma/enums";
 import type { ActionResult } from "./status";
-
-function revalidateWork(workId: string) {
-  revalidatePath(`/oeuvre/${workId}`);
-  revalidatePath("/");
-  revalidatePath("/journal");
-}
 
 const dateSchema = z.string().datetime().nullable().optional();
 
