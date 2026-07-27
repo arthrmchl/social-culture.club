@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { MEDIA, formatYear } from "@/lib/media";
 import type { WorkType } from "@/generated/prisma/enums";
+import {
+  CoverPlaceholder,
+  NeedsCompletionBadge,
+} from "@/components/CoverPlaceholder";
 import { cn } from "@/lib/utils";
 
 export type WorkCardData = {
@@ -10,6 +14,7 @@ export type WorkCardData = {
   titleOriginal?: string | null;
   year: number | null;
   coverImageId?: string | null;
+  needsCompletion?: boolean;
 };
 
 function coverUrl(work: WorkCardData): string | null {
@@ -35,9 +40,7 @@ export function WorkCard({ work }: { work: WorkCardData }) {
             loading="lazy"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-3xl opacity-40">
-            {media.emoji}
-          </div>
+          <CoverPlaceholder title={work.titleFr} type={work.type} />
         )}
         <span
           className="absolute left-1.5 top-1.5 rounded-md bg-background/80 px-1.5 py-0.5 text-[10px] font-medium backdrop-blur"
@@ -45,6 +48,9 @@ export function WorkCard({ work }: { work: WorkCardData }) {
         >
           {media.emoji} {media.label}
         </span>
+        {work.needsCompletion && (
+          <NeedsCompletionBadge className="absolute bottom-1.5 left-1.5" />
+        )}
       </div>
       <div className="min-w-0">
         <p className="truncate text-sm font-medium group-hover:text-accent">

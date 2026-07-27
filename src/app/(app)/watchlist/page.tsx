@@ -32,6 +32,7 @@ export default async function WatchlistPage({
           titleOriginal: true,
           year: true,
           coverImageId: true,
+          needsCompletion: true,
         },
       },
     },

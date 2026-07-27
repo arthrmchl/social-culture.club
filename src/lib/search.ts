@@ -11,6 +11,7 @@ export type WorkSearchResult = {
   titleOriginal: string | null;
   year: number | null; // null pour une fiche importée sans année (lot 2)
   coverImageId: string | null;
+  needsCompletion: boolean;
   sim: number;
 };
 
@@ -38,6 +39,7 @@ export async function searchWorks(
       w."titleOriginal",
       w."year",
       w."coverImageId",
+      w."needsCompletion",
       GREATEST(
         similarity(w."titleNormalized", ${q}),
         CASE WHEN w."isbn" IS NOT NULL AND w."isbn" = ${isbn} AND ${isbn} <> '' THEN 1 ELSE 0 END
