@@ -61,6 +61,15 @@ export default async function ProfilPage() {
           Ma bibliothèque
         </h2>
         <Card className="flex flex-col divide-y divide-border p-0">
+          <Link
+            href="/catalogue"
+            className="px-4 py-3 text-sm hover:bg-elevated"
+          >
+            🗂️ Catalogue partagé
+            <span className="block text-xs text-muted">
+              Toutes les fiches de l&apos;instance, pas seulement les vôtres
+            </span>
+          </Link>
           <Link href="/listes" className="px-4 py-3 text-sm hover:bg-elevated">
             📋 Mes listes
             <span className="block text-xs text-muted">

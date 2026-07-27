@@ -36,8 +36,16 @@ export default async function CataloguePage({
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Catalogue</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold">Catalogue partagé</h1>
+          <p className="mt-1 text-sm text-muted">
+            Toutes les fiches de l&apos;instance (D29).{" "}
+            <Link href="/bibliotheque" className="text-accent hover:underline">
+              Voir seulement mes œuvres
+            </Link>
+          </p>
+        </div>
         <Link href="/creer">
           <Button size="sm">➕ Ajouter</Button>
         </Link>
