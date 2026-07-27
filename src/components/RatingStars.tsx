@@ -7,7 +7,8 @@ import { scoreToStars } from "@/lib/rating";
 import { StarInput } from "./StarInput";
 
 export type RatingTarget =
-  { kind: "work"; id: string } | { kind: "season"; id: string };
+  | { kind: "work"; id: string }
+  | { kind: "season"; id: string };
 
 async function rate(target: RatingTarget, stars: number | null) {
   return target.kind === "work"

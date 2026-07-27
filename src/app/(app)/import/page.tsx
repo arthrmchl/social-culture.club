@@ -40,8 +40,7 @@ export default async function ImportPage() {
         <p className="mt-1 text-sm text-muted">
           Reprenez votre historique Letterboxd, Serializd ou de lectures. Les
           œuvres absentes du catalogue sont créées ; rien n&apos;est écrit avant
-          votre validation, et réimporter le même fichier ne crée pas de
-          doublon.
+          votre validation, et réimporter le même fichier ne crée pas de doublon.
         </p>
       </div>
 

@@ -23,9 +23,7 @@ export default async function InvitationsPage() {
 
       <Card className="divide-y divide-border">
         {invitations.length === 0 ? (
-          <p className="p-4 text-sm text-muted">
-            Aucune invitation pour l'instant.
-          </p>
+          <p className="p-4 text-sm text-muted">Aucune invitation pour l'instant.</p>
         ) : (
           invitations.map((inv) => {
             const expired = inv.expiresAt && inv.expiresAt < new Date();

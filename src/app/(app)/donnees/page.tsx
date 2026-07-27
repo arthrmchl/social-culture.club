@@ -34,9 +34,7 @@ export default async function DonneesPage() {
       </div>
 
       <Card>
-        <h2 className="mb-3 text-sm font-semibold">
-          Ce que contient mon compte
-        </h2>
+        <h2 className="mb-3 text-sm font-semibold">Ce que contient mon compte</h2>
         <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <Stat label="Entrées de journal" value={entries} />
           <Stat label="Fiches créées" value={works} />

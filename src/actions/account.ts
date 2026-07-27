@@ -36,9 +36,7 @@ export async function deleteMyAccount(
     confirmation: formData.get("confirmation"),
   });
   if (!parsed.success) {
-    return {
-      error: parsed.error.issues[0]?.message ?? "Confirmation requise.",
-    };
+    return { error: parsed.error.issues[0]?.message ?? "Confirmation requise." };
   }
 
   const expected = user.username ?? user.email;

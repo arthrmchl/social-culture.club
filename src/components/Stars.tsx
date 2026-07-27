@@ -10,10 +10,7 @@ export function Star({
   className?: string;
 }) {
   return (
-    <span
-      className={cn("relative inline-block leading-none", className)}
-      aria-hidden
-    >
+    <span className={cn("relative inline-block leading-none", className)} aria-hidden>
       <span className="text-border">★</span>
       {fill !== "empty" && (
         <span

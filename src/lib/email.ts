@@ -3,11 +3,7 @@
 
 type SendArgs = { to: string; subject: string; body: string };
 
-export async function sendEmail({
-  to,
-  subject,
-  body,
-}: SendArgs): Promise<void> {
+export async function sendEmail({ to, subject, body }: SendArgs): Promise<void> {
   console.log(
     `\n───────────── E-MAIL (dev) ─────────────\n` +
       `À        : ${to}\n` +

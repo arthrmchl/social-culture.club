@@ -58,17 +58,13 @@ export function ApplyRunner({
 
   if (done) {
     return (
-      <Button
-        variant="secondary"
-        onClick={() => router.push(`/import/${batchId}/rapport`)}
-      >
+      <Button variant="secondary" onClick={() => router.push(`/import/${batchId}/rapport`)}>
         Voir le rapport
       </Button>
     );
   }
 
-  const pct =
-    total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0;
+  const pct = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0;
 
   return (
     <div className="flex flex-col gap-2">

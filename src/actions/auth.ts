@@ -77,8 +77,7 @@ export async function signInAction(
       headers: await headers(),
     });
   } catch (e) {
-    if (e instanceof APIError)
-      return { error: "E-mail ou mot de passe incorrect." };
+    if (e instanceof APIError) return { error: "E-mail ou mot de passe incorrect." };
     return { error: "Connexion impossible. Réessayez." };
   }
 

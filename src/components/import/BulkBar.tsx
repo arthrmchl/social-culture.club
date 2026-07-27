@@ -40,7 +40,9 @@ export function BulkBar({
         </p>
       )}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm">{pendingCount} à décider</span>
+        <span className="text-sm">
+          {pendingCount} à décider
+        </span>
         <div className="ml-auto flex gap-2">
           <Button
             size="sm"

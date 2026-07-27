@@ -43,9 +43,7 @@ describe("hueFor", () => {
   });
 
   it("donne la même teinte à deux graphies du même titre", () => {
-    expect(hueFor("L'Attaque des Titans !")).toBe(
-      hueFor("l attaque des titans"),
-    );
+    expect(hueFor("L'Attaque des Titans !")).toBe(hueFor("l attaque des titans"));
   });
 });
 

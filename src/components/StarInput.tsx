@@ -30,8 +30,7 @@ export function StarInput({
         {Array.from({ length: 5 }).map((_, i) => {
           const full = i + 1;
           const half = i + 0.5;
-          const fill =
-            shown >= full ? "full" : shown >= half ? "half" : "empty";
+          const fill = shown >= full ? "full" : shown >= half ? "half" : "empty";
           return (
             <span key={i} className="relative">
               <Star fill={fill} />

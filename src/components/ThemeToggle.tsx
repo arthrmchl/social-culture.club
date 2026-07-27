@@ -32,9 +32,7 @@ export function ThemeToggle() {
       type="button"
       onClick={toggle}
       className="rounded-md p-2 text-lg hover:bg-elevated"
-      aria-label={
-        theme === "dark" ? "Passer au thème clair" : "Passer au thème sombre"
-      }
+      aria-label={theme === "dark" ? "Passer au thème clair" : "Passer au thème sombre"}
       title="Changer de thème"
     >
       {theme === "dark" ? "🌙" : "☀️"}

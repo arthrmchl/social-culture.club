@@ -10,7 +10,8 @@ export default async function CreerPage({
   searchParams: Promise<{ type?: string; title?: string }>;
 }) {
   const { type, title } = await searchParams;
-  const initialType: WorkType = type && isWorkType(type) ? type : "FILM";
+  const initialType: WorkType =
+    type && isWorkType(type) ? type : "FILM";
 
   const genres = await db.genre.findMany({
     orderBy: { name: "asc" },

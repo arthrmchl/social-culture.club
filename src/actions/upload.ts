@@ -4,7 +4,8 @@ import { requireUser } from "@/lib/session";
 import { saveImageFromBuffer } from "@/lib/storage";
 
 export type UploadResult =
-  { ok: true; id: string; url: string } | { ok: false; error: string };
+  | { ok: true; id: string; url: string }
+  | { ok: false; error: string };
 
 /**
  * Téléverse un visuel (upload ou collage presse-papier) et renvoie l'id de l'Image.

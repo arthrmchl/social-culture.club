@@ -53,11 +53,7 @@ export default async function RapportPage({
       take: 50,
     }),
     db.importTarget.findMany({
-      where: {
-        batchId: batch.id,
-        resolution: "CREATE",
-        appliedAt: { not: null },
-      },
+      where: { batchId: batch.id, resolution: "CREATE", appliedAt: { not: null } },
       select: { id: true, titleFr: true, year: true },
       orderBy: { titleNormalized: "asc" },
       take: 12,
