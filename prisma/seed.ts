@@ -11,6 +11,14 @@ const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL ?? "admin@social-culture.club";
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? "changeme123";
 const ADMIN_USERNAME = process.env.SEED_ADMIN_USERNAME ?? "admin";
 
+// Second membre (lot 4) : sans lui, rien de social n'est testable — ni le fil,
+// ni un abonnement, ni un blocage, ni une file de modération. Aucun lien n'est
+// créé entre les deux comptes : le scénario e2e doit pouvoir cliquer
+// « Suivre » sur un état vierge.
+const MEMBER_EMAIL = process.env.SEED_MEMBER_EMAIL ?? "membre@social-culture.club";
+const MEMBER_PASSWORD = process.env.SEED_MEMBER_PASSWORD ?? "changeme123";
+const MEMBER_USERNAME = process.env.SEED_MEMBER_USERNAME ?? "membre";
+
 const GENRES = [
   "Action",
   "Aventure",
@@ -33,35 +41,62 @@ const GENRES = [
   "Seinen",
 ];
 
-async function main() {
-  // ─── Administrateur ───────────────────────────────────────
-  let admin = await db.user.findUnique({ where: { email: ADMIN_EMAIL } });
-  if (!admin) {
-    const id = randomUUID();
-    admin = await db.user.create({
-      data: {
-        id,
-        name: "Administrateur",
-        email: ADMIN_EMAIL,
-        emailVerified: true,
-        username: ADMIN_USERNAME,
-        displayUsername: ADMIN_USERNAME,
-        role: "admin",
-      },
-    });
-    await db.account.create({
-      data: {
-        id: randomUUID(),
-        accountId: id,
-        providerId: "credential",
-        userId: id,
-        password: await hashPassword(ADMIN_PASSWORD),
-      },
-    });
-    console.log(`✅ Admin créé : ${ADMIN_EMAIL} / ${ADMIN_PASSWORD}`);
-  } else {
-    console.log(`ℹ️  Admin déjà présent : ${ADMIN_EMAIL}`);
+/** Crée un compte et ses identifiants s'il n'existe pas déjà (idempotent). */
+async function ensureUser(opts: {
+  email: string;
+  password: string;
+  username: string;
+  name: string;
+  role: "admin" | "user";
+}) {
+  const existing = await db.user.findUnique({ where: { email: opts.email } });
+  if (existing) {
+    console.log(`ℹ️  Compte déjà présent : ${opts.email}`);
+    return existing;
   }
+
+  const id = randomUUID();
+  const user = await db.user.create({
+    data: {
+      id,
+      name: opts.name,
+      email: opts.email,
+      emailVerified: true,
+      username: opts.username,
+      displayUsername: opts.username,
+      role: opts.role,
+    },
+  });
+  await db.account.create({
+    data: {
+      id: randomUUID(),
+      accountId: id,
+      providerId: "credential",
+      userId: id,
+      password: await hashPassword(opts.password),
+    },
+  });
+  console.log(`✅ Compte créé : ${opts.email} / ${opts.password}`);
+  return user;
+}
+
+async function main() {
+  // ─── Comptes ──────────────────────────────────────────────
+  const admin = await ensureUser({
+    email: ADMIN_EMAIL,
+    password: ADMIN_PASSWORD,
+    username: ADMIN_USERNAME,
+    name: "Administrateur",
+    role: "admin",
+  });
+
+  await ensureUser({
+    email: MEMBER_EMAIL,
+    password: MEMBER_PASSWORD,
+    username: MEMBER_USERNAME,
+    name: "Membre",
+    role: "user",
+  });
 
   // ─── Invitation de démarrage ──────────────────────────────
   const existing = await db.invitation.findFirst({

@@ -22,6 +22,31 @@ const eslintConfig = defineConfig([
       "react/no-unescaped-entities": "off",
     },
   },
+  {
+    // Les pages publiques (lot 4) affichent le contenu **d'autrui** à un
+    // visiteur éventuellement déconnecté. Toute la logique « qui peut voir
+    // quoi » (D25, D26) vit dans src/lib/social/ ; une page qui interrogerait
+    // la base directement la contournerait sans que rien ne le signale.
+    //
+    // Cette règle est le seul garde-fou mécanique du lot : les trois autres
+    // (renvoyer null plutôt qu'un objet partiel, notFound() plutôt que 403, la
+    // section verifySocial) sont des conventions.
+    files: ["src/app/(public)/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@/lib/db",
+              message:
+                "Une page publique ne lit jamais la base directement : passer par src/lib/social/read.ts, qui porte les règles de visibilité (D25, D26).",
+            },
+          ],
+        },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;

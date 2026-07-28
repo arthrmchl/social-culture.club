@@ -36,6 +36,22 @@ model User {
   banReason  String?
   banExpires DateTime?
 
+  /// Visibilité du compte (lot 4, D26, P5).
+  ///
+  /// Ces trois champs ne sont **pas** déclarés dans `user.additionalFields` de
+  /// `src/lib/auth.ts` : on les lit toujours en base. Les inscrire dans la
+  /// session figerait la visibilité jusqu'à son expiration — passer son compte
+  /// en privé doit prendre effet immédiatement.
+  visibility ProfileVisibility @default(PUBLIC)
+
+  /// Restrictions par section. Des booléens et non un second énuméré : ils ne
+  /// peuvent que **restreindre** la visibilité du compte, jamais l'élargir. La
+  /// visibilité effective d'une section est donc `min(compte, section)`, une
+  /// seule règle à écrire — et pas de combinatoire absurde du type « journal
+  /// public sur compte privé ».
+  showJournalPublicly Boolean @default(true)
+  showStatsPublicly   Boolean @default(true)
+
   sessions Session[]
   accounts Account[]
 
@@ -62,6 +78,21 @@ model User {
   favorites Favorite[]
   quotes    Quote[]
   goals     Goal[]
+
+  // social (lot 4)
+  following          Follow[]               @relation("FollowFollower")
+  followers          Follow[]               @relation("FollowFollowing")
+  blocksMade         Block[]                @relation("BlockBlocker")
+  blocksReceived     Block[]                @relation("BlockBlocked")
+  socialLikes        SocialLike[]
+  comments           Comment[]
+  notifications      Notification[]         @relation("NotificationRecipient")
+  notificationsSent  Notification[]         @relation("NotificationActor")
+  reportsFiled       Report[]               @relation("ReportReporter")
+  reportsAgainst     Report[]               @relation("ReportReportedUser")
+  reportsResolved    Report[]               @relation("ReportResolver")
+  corrections        CorrectionSuggestion[] @relation("CorrectionAuthor")
+  correctionsHandled CorrectionSuggestion[] @relation("CorrectionHandler")
 
   @@map("user")
 }
@@ -190,6 +221,11 @@ model Work {
   tags      WorkTag[]
   favorites Favorite[]
   quotes    Quote[]
+
+  // social (lot 4)
+  corrections   CorrectionSuggestion[]
+  notifications Notification[]
+  reports       Report[]
 
   @@index([type])
   @@index([createdById])
@@ -401,13 +437,30 @@ model UserWork {
   rewatchCount  Int       @default(0) // re-consommations (F2), dérivé du journal
   watchlistedAt DateTime? // date d'ajout watchlist quand state = WANT (F1)
 
+  /// Critique masquée par la modération (lot 4, D25). Elle masque **la critique
+  /// seule** : le statut, la note et la progression restent au membre — la
+  /// modération ne touche jamais au suivi personnel.
+  hiddenAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // social (lot 4) — la critique d'œuvre est une cible sociale à part entière
+  likes          SocialLike[]
+  socialComments Comment[]
+  notifications  Notification[]
+  reports        Report[]
 
   @@unique([userId, workId])
   @@index([userId])
   @@index([workId])
   @@index([userId, state])
+  /// Les critiques d'un membre, de la plus récente à la plus ancienne (P1, P2).
+  /// Prisma ne déclare pas d'index partiel, et un `WHERE reviewedAt IS NOT NULL`
+  /// écrit à la main serait supprimé au prochain `migrate dev` — comme l'index
+  /// GIN avant sa reprise par Prisma. Les NULL se regroupant en fin d'index,
+  /// la requête reste sélective.
+  @@index([userId, reviewedAt])
 }
 
 /// Note et critique de saison (T3, D5) — indépendantes de la note de série.
@@ -466,12 +519,26 @@ model JournalEntry {
   /// unique, les saisies manuelles cohabitent donc sans conflit.
   importKey String?
 
+  /// Masquée par la modération (lot 4, D25) — l'entrée reste à son auteur, qui
+  /// continue de la voir coiffée d'un bandeau, mais elle sort des surfaces
+  /// sociales. `null` = visible.
+  hiddenAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // social (lot 4)
+  likes          SocialLike[]
+  socialComments Comment[]
+  notifications  Notification[]
+  reports        Report[]
 
   @@unique([userId, importKey])
   @@index([userId, loggedAt])
   @@index([workId])
+  /// Le fil antichronologique (P2) s'ordonne sur `createdAt`, jamais sur
+  /// `loggedAt` : une entrée antidatée à 2011 n'est pas une actualité de 2011.
+  @@index([userId, createdAt])
 }
 
 /// Progression à l'épisode (T1) — la présence = épisode vu.
@@ -718,14 +785,28 @@ model List {
   /// dans un index unique : les listes manuelles cohabitent sans conflit.
   importKey String?
 
+  /// Retirée des surfaces sociales par **son auteur** (lot 4, P5). À ne pas
+  /// confondre avec `hiddenAt`, qui est une décision de modération : les deux
+  /// coexistent parce qu'un auteur doit pouvoir reprendre sa liste, mais pas
+  /// démasquer ce que la modération a masqué.
+  isPrivate Boolean   @default(false)
+  hiddenAt  DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   items ListItem[]
 
+  // social (lot 4)
+  likes          SocialLike[]
+  socialComments Comment[]
+  notifications  Notification[]
+  reports        Report[]
+
   @@unique([userId, slug])
   @@unique([userId, importKey])
   @@index([userId, isPinned])
+  @@index([userId, createdAt])
 }
 
 /// Un élément de liste : sa place et le mot qui l'accompagne (S9).
@@ -871,4 +952,328 @@ model Goal {
 
   @@unique([userId, year, scope])
   @@index([userId, year])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Social (lot 4) — la première ouverture de la lecture (§5.7, P1→P5)
+//
+// Les lots 1 à 3 tiennent une règle simple : toute lecture se referme sur
+// `userId`. Le lot 4 l'inverse pour la première fois — d'où le soin porté
+// ici aux règles onDelete et aux invariants.
+//
+// **Toute clé étrangère vers `User` est explicitement `Cascade`, ou nullable
+// et `SetNull`.** `Work.createdById` est en Restrict (le défaut), ce qui a
+// imposé la réattribution des fiches à un compte système dans
+// `deleteMyAccount` ; une seule FK oubliée ici ferait échouer
+// `db.user.delete()` et casserait la suppression de compte (N9). La section
+// `verifySocial` de `scripts/verify.ts` le prouve contre la vraie base.
+//
+// Trois invariants ne peuvent pas être tenus par PostgreSQL et vivent dans
+// les actions, comme « une seule édition par défaut » au lot 3 : une seule
+// colonne de cible renseignée, `followerId != followingId`, et un signalement
+// ouvert par rapporteur et par cible.
+// ─────────────────────────────────────────────────────────────
+
+/// Visibilité d'un compte (D26, P5).
+///
+/// Trois niveaux et non deux : les profils étant partageables par lien
+/// (jalon B), il faut distinguer « ouvert au web » de « ouvert à l'instance ».
+/// D26 dit « public par défaut, au sens visible des membres tant que le cercle
+/// reste fermé » : MEMBERS est ce sens-là, PUBLIC est le partage par lien,
+/// PRIVATE est l'option de compte privé.
+enum ProfileVisibility {
+  PUBLIC // visible de tous, y compris hors connexion
+  MEMBERS // visible des membres connectés de l'instance
+  PRIVATE // visible des seuls abonnés approuvés
+}
+
+enum FollowStatus {
+  PENDING // demande en attente d'approbation (compte privé)
+  ACCEPTED
+}
+
+enum NotificationType {
+  FOLLOW
+  FOLLOW_REQUEST
+  FOLLOW_ACCEPTED
+  LIKE
+  COMMENT
+  CORRECTION // proposition de correction sur une fiche (D30)
+  MODERATION // contenu masqué ou supprimé (D25)
+}
+
+enum ReportReason {
+  SPAM
+  HARASSMENT
+  HATE
+  SEXUAL
+  VIOLENCE
+  SPOILER // critique non repliée qui divulgâche
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  ACCEPTED // signalement retenu : contenu masqué ou supprimé
+  REJECTED
+}
+
+/// Nature de la cible d'un signalement, **figée à la création**.
+///
+/// Contrairement à SocialLike et Comment, Report porte une colonne de type :
+/// ses clés étrangères sont en SetNull pour qu'une suppression de contenu par
+/// la modération n'efface pas la trace du signalement. Une fois la FK à NULL,
+/// cette colonne et le libellé figé sont tout ce qui rend la file lisible.
+enum ReportTargetKind {
+  USER
+  JOURNAL_ENTRY
+  LIST
+  REVIEW
+  COMMENT
+  WORK
+}
+
+enum CorrectionStatus {
+  OPEN
+  APPLIED
+  REJECTED
+}
+
+/// Abonnement (P2). Un compte privé (D26) place la demande en PENDING ; tout
+/// autre la crée directement ACCEPTED.
+///
+/// `followerId != followingId` n'est pas déclarable en Prisma (pas de CHECK) :
+/// l'invariant vit dans `followUser`.
+model Follow {
+  id          String       @id @default(cuid())
+  followerId  String
+  follower    User         @relation("FollowFollower", fields: [followerId], references: [id], onDelete: Cascade)
+  followingId String
+  following   User         @relation("FollowFollowing", fields: [followingId], references: [id], onDelete: Cascade)
+  status      FollowStatus @default(ACCEPTED)
+  createdAt   DateTime     @default(now())
+  acceptedAt  DateTime?
+
+  @@unique([followerId, followingId])
+  @@index([followingId, status]) // mes abonnés, mes demandes en attente
+  @@index([followerId, status]) // mes abonnements — la source du fil
+}
+
+/// Blocage (D25, P4). Stocké dans **un** sens, appliqué dans **les deux** : si
+/// A bloque B, ni l'un ni l'autre ne se voit ni n'interagit.
+///
+/// Cette asymétrie entre stockage et effet est la première source d'erreur du
+/// lot. Elle est neutralisée par un helper unique, `blockedUserIds()`
+/// (`src/lib/social/read.ts`), que traversent toutes les lectures — aucune
+/// requête ne consulte cette table directement.
+model Block {
+  id        String   @id @default(cuid())
+  blockerId String
+  blocker   User     @relation("BlockBlocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedId String
+  blocked   User     @relation("BlockBlocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  reason    String?
+  createdAt DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
+}
+
+/// J'aime social (P3) sur une entrée de journal, une liste ou une critique
+/// d'œuvre.
+///
+/// **Trois clés étrangères réelles plutôt qu'un couple (type, id)** : c'est la
+/// cascade qui tranche. `deleteJournalEntry` existe depuis le lot 1 ; sans FK,
+/// elle laisserait derrière elle des j'aime et des commentaires orphelins que
+/// rien ne nettoierait.
+///
+/// **Une seule table plutôt que trois** : compteurs, file de modération,
+/// notifications et export parlent de « j'aime » sans distinction. Trois tables
+/// imposeraient trois requêtes et trois branches partout — avec les
+/// commentaires et les signalements, on passerait de 4 tables à 12.
+///
+/// Nommé SocialLike et non Like : `UserWork.liked` est le j'aime **personnel
+/// sur l'œuvre** (S6), une donnée de suivi. Les deux ne doivent jamais être
+/// confondus, ni dans le code, ni dans les compteurs, ni dans l'interface.
+/// (« Like » est en prime un mot réservé SQL.)
+model SocialLike {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  journalEntryId String?
+  journalEntry   JournalEntry? @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  listId         String?
+  list           List?         @relation(fields: [listId], references: [id], onDelete: Cascade)
+  userWorkId     String?
+  userWork       UserWork?     @relation(fields: [userWorkId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  /// Trois uniques plutôt qu'un seul sur (userId, type, id) : PostgreSQL
+  /// traitant les NULL comme distincts, chaque contrainte ne mord que sur les
+  /// lignes dont la colonne concernée est renseignée. C'est le mécanisme qui
+  /// fait déjà cohabiter les `importKey` manuelles du lot 2.
+  ///
+  /// L'invariant « exactement une des trois colonnes est non nulle » n'est pas
+  /// déclarable : il vit dans `src/lib/social-target.ts`, testé, et traverse
+  /// toutes les actions.
+  @@unique([userId, journalEntryId])
+  @@unique([userId, listId])
+  @@unique([userId, userWorkId])
+  @@index([journalEntryId])
+  @@index([listId])
+  @@index([userWorkId])
+}
+
+/// Commentaire (P3). Fil **plat** en v1 : pas de `parentId`, décision assumée
+/// du cahier des charges. L'ajouter plus tard serait une migration additive.
+///
+/// Le corps est rendu par `<Markdown>` (`src/lib/markdown.tsx`), écrit dès le
+/// lot 1 en vue de ce moment : aucun HTML brut, protocoles restreints, liens
+/// en nofollow.
+model Comment {
+  id       String @id @default(cuid())
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  journalEntryId String?
+  journalEntry   JournalEntry? @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  listId         String?
+  list           List?         @relation(fields: [listId], references: [id], onDelete: Cascade)
+  userWorkId     String?
+  userWork       UserWork?     @relation(fields: [userWorkId], references: [id], onDelete: Cascade)
+
+  body     String
+  hiddenAt DateTime? // masqué par la modération (D25)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  notifications Notification[]
+  reports       Report[]
+
+  @@index([journalEntryId, createdAt])
+  @@index([listId, createdAt])
+  @@index([userWorkId, createdAt])
+  @@index([authorId])
+}
+
+/// Notification interne (P3) — jamais d'e-mail, le cahier des charges dit
+/// « notifications internes ».
+///
+/// Créée **dans la transaction de l'action** qui la motive : une écriture qui
+/// échoue ne doit pas laisser de notification fantôme.
+///
+/// Pas de contrainte d'unicité : un `@@unique` couvrant (destinataire, acteur,
+/// type, cible) serait inopérant à cause des NULL et interdirait deux
+/// commentaires successifs du même auteur. Le regroupement (« ne pas empiler
+/// une notification identique **non lue** ») est une règle métier, portée par
+/// `src/lib/notify-rules.ts`.
+model Notification {
+  id     String @id @default(cuid())
+  userId String // destinataire
+  user   User   @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Auteur du geste. Nullable pour les notifications système (modération).
+  /// Cascade : un compte supprimé retire ses gestes des boîtes des autres.
+  actorId String?
+  actor   User?   @relation("NotificationActor", fields: [actorId], references: [id], onDelete: Cascade)
+
+  type NotificationType
+
+  journalEntryId String?
+  journalEntry   JournalEntry? @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  listId         String?
+  list           List?         @relation(fields: [listId], references: [id], onDelete: Cascade)
+  userWorkId     String?
+  userWork       UserWork?     @relation(fields: [userWorkId], references: [id], onDelete: Cascade)
+  commentId      String?
+  comment        Comment?      @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  workId         String?
+  work           Work?         @relation(fields: [workId], references: [id], onDelete: Cascade)
+
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt]) // le compteur de non-lues, appelé sur chaque page
+}
+
+/// Signalement de contenu ou de compte (D25, P4).
+///
+/// Les FK de cible sont en **SetNull** et non en Cascade : si l'administrateur
+/// supprime le contenu incriminé, le signalement doit rester dans l'historique.
+/// D'où le triptyque figé `targetKind` / `targetLabel` / `targetExcerpt`, seule
+/// chose qui rende la file lisible une fois les FK à NULL.
+///
+/// L'unicité « un signalement ouvert par rapporteur et par cible » n'est pas
+/// déclarable ici : `reporterId` étant nullable, deux rapporteurs supprimés
+/// produiraient deux NULL considérés distincts. La règle vit dans
+/// `reportContent()`.
+model Report {
+  id String @id @default(cuid())
+
+  reporterId String?
+  reporter   User?   @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: SetNull)
+
+  targetKind ReportTargetKind
+
+  /// Instantané pris au moment du signalement : titre de liste, titre d'œuvre,
+  /// nom d'utilisateur. Le contenu peut disparaître, la file doit rester lisible.
+  targetLabel String
+
+  /// Extrait du texte incriminé (200 caractères, markdown retiré).
+  targetExcerpt String?
+
+  reportedUserId String?
+  reportedUser   User?         @relation("ReportReportedUser", fields: [reportedUserId], references: [id], onDelete: SetNull)
+  journalEntryId String?
+  journalEntry   JournalEntry? @relation(fields: [journalEntryId], references: [id], onDelete: SetNull)
+  listId         String?
+  list           List?         @relation(fields: [listId], references: [id], onDelete: SetNull)
+  userWorkId     String?
+  userWork       UserWork?     @relation(fields: [userWorkId], references: [id], onDelete: SetNull)
+  commentId      String?
+  comment        Comment?      @relation(fields: [commentId], references: [id], onDelete: SetNull)
+  workId         String?
+  work           Work?         @relation(fields: [workId], references: [id], onDelete: SetNull)
+
+  reason  ReportReason
+  details String?
+  status  ReportStatus @default(OPEN)
+
+  resolvedAt   DateTime?
+  resolvedById String?
+  resolvedBy   User?     @relation("ReportResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  resolution   String? // note de l'administrateur
+
+  createdAt DateTime @default(now())
+
+  @@index([status, createdAt]) // la file de modération
+  @@index([reportedUserId])
+}
+
+/// Proposition de correction sur une fiche (D30) — le contrepoids au droit
+/// d'édition réservé au créateur et à l'administrateur (R8). Notifie les deux.
+model CorrectionSuggestion {
+  id       String @id @default(cuid())
+  workId   String
+  work     Work   @relation(fields: [workId], references: [id], onDelete: Cascade)
+  authorId String
+  author   User   @relation("CorrectionAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  /// Champ visé, à titre indicatif (« année », « titre original », « visuel »).
+  field   String?
+  message String
+
+  status      CorrectionStatus @default(OPEN)
+  handledAt   DateTime?
+  handledById String?
+  handledBy   User?            @relation("CorrectionHandler", fields: [handledById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([workId, status])
+  @@index([status, createdAt])
 }

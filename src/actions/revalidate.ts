@@ -25,3 +25,81 @@ export function revalidateLists(slug?: string): void {
   if (slug) revalidatePath(`/listes/${slug}`);
   revalidatePath("/");
 }
+
+/**
+ * Les vues d'un profil public (lot 4).
+ *
+ * `username` est nullable en base : sans pseudonyme, il n'y a pas d'URL à
+ * purger, et l'appel est sans effet plutôt que d'échouer.
+ *
+ * Rappel qui vaut pour tout ce qui suit : `revalidatePath` purge **par
+ * chemin**, jamais par visiteur. Ces appels servent la fraîcheur, pas la
+ * confidentialité — celle-ci est tenue par `src/lib/social/read.ts` et par le
+ * `force-dynamic` du groupe `(public)`.
+ */
+export function revalidateProfile(username: string | null): void {
+  revalidatePath("/profil");
+  revalidatePath("/confidentialite");
+  revalidatePath("/abonnements");
+  if (!username) return;
+  revalidatePath(`/u/${username}`);
+  revalidatePath(`/u/${username}/journal`);
+  revalidatePath(`/u/${username}/critiques`);
+  revalidatePath(`/u/${username}/listes`);
+  revalidatePath(`/u/${username}/abonnes`);
+  revalidatePath(`/u/${username}/abonnements`);
+}
+
+/** Le fil et la page « découvrir » (lot 4, P2). */
+export function revalidateFeed(): void {
+  revalidatePath("/fil");
+  revalidatePath("/decouvrir");
+}
+
+/**
+ * La boîte de réception et le compteur de la barre supérieure (lot 4, P3).
+ *
+ * Le compteur est calculé dans `(app)/layout.tsx`, donc sur **toutes** les
+ * pages de l'application : revalider la racine ne suffirait pas.
+ */
+export function revalidateNotifications(): void {
+  revalidatePath("/notifications");
+  revalidatePath("/", "layout");
+}
+
+/** La file de modération (lot 4, P4). */
+export function revalidateModeration(): void {
+  revalidatePath("/moderation");
+}
+
+/**
+ * Le permalien d'une cible sociale et la page qui la liste (lot 4, P3).
+ *
+ * Prend une cible **déjà résolue** — `resolveTarget` a chargé son propriétaire,
+ * son slug et son œuvre. Reconstruire ces informations ici demanderait une
+ * seconde requête pour un simple appel de cache.
+ */
+export function revalidateSocialTarget(resolved: {
+  target: { kind: "entry" | "list" | "review"; id: string };
+  slug: string | null;
+  workId: string | null;
+  ownerUsername?: string | null;
+}): void {
+  const u = resolved.ownerUsername;
+  if (!u) return;
+
+  switch (resolved.target.kind) {
+    case "entry":
+      revalidatePath(`/u/${u}/journal/${resolved.target.id}`);
+      revalidatePath(`/u/${u}/journal`);
+      break;
+    case "list":
+      if (resolved.slug) revalidatePath(`/u/${u}/listes/${resolved.slug}`);
+      revalidatePath(`/u/${u}/listes`);
+      break;
+    case "review":
+      if (resolved.workId) revalidatePath(`/u/${u}/critique/${resolved.workId}`);
+      revalidatePath(`/u/${u}/critiques`);
+      break;
+  }
+}

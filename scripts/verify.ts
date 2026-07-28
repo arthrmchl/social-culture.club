@@ -5,6 +5,7 @@
  * Usage : npx tsx scripts/verify.ts
  */
 import "dotenv/config";
+import { randomUUID } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, Prisma } from "../src/generated/prisma/client";
 import { normalizeTitle } from "../src/lib/text";
@@ -29,6 +30,8 @@ import { isReading } from "../src/lib/media";
 import { MAX_FAVORITES } from "../src/lib/favorites";
 import { collectUserExport, entityToCsv } from "../src/lib/export/collect";
 import { CSV_ENTITIES } from "../src/lib/export/shape";
+import { accessFor, blockedUserIds } from "../src/lib/social/access";
+import { buildFeedPage, type FeedItem } from "../src/lib/feed";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const db = new PrismaClient({ adapter });
@@ -185,6 +188,9 @@ async function main() {
   // ── Lot 3 : bibliothèque riche ───────────────────────────────
   const lot3 = await verifyLibrary(admin.id, manga.id, film.id);
 
+  // ── Lot 4 : social ───────────────────────────────────────────
+  const lot4 = await verifySocial(admin.id, film.id);
+
   console.log("── Résultats de vérification ─────────────────");
   console.log(`Film créé             : ${film.titleFr} (${film.year})`);
   console.log(`Anime — épisodes gén. : ${epCount} (attendu 24)`);
@@ -246,7 +252,44 @@ async function main() {
     `Favoris — plafond ${lot3.favoriteCap} respecté : ${lot3.favoriteCount} (attendu ${lot3.favoriteCap})`,
   );
   console.log(
-    `Export — version ${lot3.exportVersion}, ${lot3.exportEntities} entités CSV (attendu 2 et 14)`,
+    `Export — version ${lot3.exportVersion}, ${lot3.exportEntities} entités CSV (attendu 3 et 18)`,
+  );
+
+  console.log(
+    `Abonnement — doublon rejeté : ${lot4.followDuplicateBlocked} (attendu true)`,
+  );
+  console.log(
+    `J'aime — entrée + liste par le même membre : ${lot4.likesAcrossTargets} (attendu 2 — les NULL ne se gênent pas)`,
+  );
+  console.log(
+    `J'aime — doublon sur la même entrée rejeté : ${lot4.likeDuplicateBlocked} (attendu true)`,
+  );
+  console.log(
+    `Cascade — entrée supprimée → j'aime/commentaires/notifications : ${lot4.orphansAfterDelete} (attendu 0)`,
+  );
+  console.log(
+    `Suppression de compte — chargé de social : ${lot4.accountDeleted} (attendu true, sans erreur de contrainte)`,
+  );
+  console.log(
+    `Suppression de compte — signalement survivant, reporterId à NULL : ${lot4.reportSurvived} (attendu true)`,
+  );
+  console.log(
+    `Visibilité PRIVATE — avant/après acceptation : ${lot4.privateBefore}/${lot4.privateAfter} (attendu false/true)`,
+  );
+  console.log(
+    `Blocage — symétrie A↔B : ${lot4.blockSymmetric} (attendu true — stocké dans un sens, appliqué dans les deux)`,
+  );
+  console.log(
+    `Fil — entrée importée présente : ${lot4.feedHasImported} (attendu false — un import ne noie pas les abonnés)`,
+  );
+  console.log(
+    `Fil — critique et entrée de même texte : ${lot4.dedupCount} élément (attendu 1, l'entrée : ${lot4.dedupKeptEntry})`,
+  );
+  console.log(
+    `Fil — ordre antichronologique : ${lot4.feedDescending} (attendu true)`,
+  );
+  console.log(
+    `Modération — entrée masquée sortie du fil : ${lot4.hiddenLeftFeed} (attendu true)`,
   );
 
   const ok =
@@ -259,10 +302,394 @@ async function main() {
     seriesState === "CAUGHT_UP" &&
     tomesState === "COMPLETED" &&
     lot2.ok &&
-    lot3.ok;
+    lot3.ok &&
+    lot4.ok;
   console.log(ok ? "\n✅ TOUTES LES VÉRIFICATIONS PASSENT" : "\n❌ ÉCHEC");
   await db.$disconnect();
   process.exit(ok ? 0 : 1);
+}
+
+/**
+ * Lot 4 — social, contre la vraie base.
+ *
+ * Trois choses ne peuvent être prouvées que d'ici. Les contraintes d'unicité,
+ * d'abord — et surtout la cohabitation des trois uniques de `SocialLike`, qui
+ * repose sur le fait que PostgreSQL considère les NULL comme distincts. La
+ * **suppression de compte**, ensuite : `Work.createdById` est en Restrict, une
+ * seule clé étrangère sociale mal déclarée ferait échouer `db.user.delete()`,
+ * et cela ne se verrait qu'au départ d'un membre. Les règles de visibilité,
+ * enfin, exercées par `accessFor` — le chemin réel des pages, pas une
+ * réimplémentation qui pourrait diverger.
+ */
+async function verifySocial(adminId: string, workId: string) {
+  const JETABLE = "verify-jetable@social-culture.club";
+
+  // Nettoyage d'entrée : le script doit être rejouable.
+  await db.user.deleteMany({ where: { email: JETABLE } });
+  await db.journalEntry.deleteMany({ where: { importKey: "verify-social" } });
+
+  const jetable = await db.user.create({
+    data: {
+      id: randomUUID(),
+      name: "Compte jetable",
+      email: JETABLE,
+      username: `verif-${Date.now().toString(36)}`,
+      emailVerified: true,
+    },
+  });
+
+  // ── 1. Abonnement : l'unique mord ────────────────────────────
+  await db.follow.create({
+    data: { followerId: jetable.id, followingId: adminId, status: "PENDING" },
+  });
+  let followDuplicateBlocked = false;
+  try {
+    await db.follow.create({
+      data: { followerId: jetable.id, followingId: adminId },
+    });
+  } catch {
+    followDuplicateBlocked = true;
+  }
+
+  // ── 2 & 3. J'aime : trois uniques qui ne se gênent pas ───────
+  const entry = await db.journalEntry.create({
+    data: {
+      userId: adminId,
+      workId,
+      loggedAt: new Date(),
+      reviewText: "Critique de vérification.",
+      importKey: "verify-social",
+    },
+  });
+  const list = await db.list.upsert({
+    where: { userId_slug: { userId: adminId, slug: "verif-social" } },
+    update: {},
+    create: { userId: adminId, title: "Vérif social", slug: "verif-social" },
+  });
+
+  // Le même membre aime une entrée **et** une liste : les deux lignes ont
+  // `userId` en commun et diffèrent par la colonne renseignée. Sans la
+  // distinction des NULL, la seconde serait rejetée.
+  await db.socialLike.create({
+    data: { userId: jetable.id, journalEntryId: entry.id },
+  });
+  await db.socialLike.create({
+    data: { userId: jetable.id, listId: list.id },
+  });
+  const likesAcrossTargets = await db.socialLike.count({
+    where: { userId: jetable.id },
+  });
+
+  let likeDuplicateBlocked = false;
+  try {
+    await db.socialLike.create({
+      data: { userId: jetable.id, journalEntryId: entry.id },
+    });
+  } catch {
+    likeDuplicateBlocked = true;
+  }
+
+  // ── 4. Cascade au départ d'un contenu ────────────────────────
+  const comment = await db.comment.create({
+    data: {
+      authorId: jetable.id,
+      journalEntryId: entry.id,
+      body: "Commentaire de vérification.",
+    },
+  });
+  await db.notification.create({
+    data: {
+      userId: adminId,
+      actorId: jetable.id,
+      type: "COMMENT",
+      journalEntryId: entry.id,
+      commentId: comment.id,
+    },
+  });
+
+  await db.journalEntry.delete({ where: { id: entry.id } });
+  const orphansAfterDelete =
+    (await db.socialLike.count({ where: { journalEntryId: entry.id } })) +
+    (await db.comment.count({ where: { journalEntryId: entry.id } })) +
+    (await db.notification.count({ where: { journalEntryId: entry.id } }));
+
+  // ── 5 & 6. Suppression de compte chargé de social ────────────
+  // La garde anti-régression du piège `Work.createdById` en Restrict : toute
+  // FK sociale vers User mal déclarée fait échouer ce delete.
+  await db.report.create({
+    data: {
+      reporterId: jetable.id,
+      targetKind: "LIST",
+      targetLabel: list.title,
+      listId: list.id,
+      reason: "SPAM",
+    },
+  });
+  await db.correctionSuggestion.create({
+    data: { workId, authorId: jetable.id, message: "Année à vérifier." },
+  });
+  await db.notification.create({
+    data: { userId: adminId, actorId: jetable.id, type: "FOLLOW" },
+  });
+  await db.block.create({
+    data: { blockerId: jetable.id, blockedId: adminId },
+  });
+
+  let accountDeleted = false;
+  try {
+    await db.user.delete({ where: { id: jetable.id } });
+    accountDeleted = true;
+  } catch (e) {
+    console.error("Suppression du compte jetable :", e);
+  }
+
+  // Le signalement survit au départ de son rapporteur (SetNull) — sans quoi
+  // l'historique de modération se viderait à chaque compte supprimé.
+  const survivor = await db.report.findFirst({
+    where: { listId: list.id, targetKind: "LIST" },
+    select: { reporterId: true },
+  });
+  const reportSurvived = survivor !== null && survivor.reporterId === null;
+
+  // ── 7. Visibilité : le chemin réel des pages ─────────────────
+  const membre = await db.user.findFirst({
+    where: { role: { not: "admin" }, email: { not: JETABLE } },
+    select: { id: true },
+  });
+  const viewer = membre ? { id: membre.id, isAdmin: false } : null;
+
+  const previousVisibility = (
+    await db.user.findUniqueOrThrow({
+      where: { id: adminId },
+      select: { visibility: true },
+    })
+  ).visibility;
+
+  await db.user.update({
+    where: { id: adminId },
+    data: { visibility: "PRIVATE" },
+  });
+  await db.follow.deleteMany({
+    where: { followerId: membre?.id, followingId: adminId },
+  });
+
+  const before = await accessFor(viewer, adminId);
+  const privateBefore = before?.access.canSeeJournal ?? false;
+
+  if (membre) {
+    await db.follow.create({
+      data: {
+        followerId: membre.id,
+        followingId: adminId,
+        status: "ACCEPTED",
+        acceptedAt: new Date(),
+      },
+    });
+  }
+  const after = await accessFor(viewer, adminId);
+  const privateAfter = after?.access.canSeeJournal ?? false;
+
+  // ── 8. Symétrie du blocage ───────────────────────────────────
+  let blockSymmetric = false;
+  if (membre) {
+    await db.block.deleteMany({
+      where: {
+        OR: [
+          { blockerId: adminId, blockedId: membre.id },
+          { blockerId: membre.id, blockedId: adminId },
+        ],
+      },
+    });
+    await db.block.create({
+      data: { blockerId: adminId, blockedId: membre.id },
+    });
+    // Stocké dans un seul sens, il doit se lire dans les deux.
+    const seenByBlocked = await blockedUserIds(membre.id);
+    const seenByBlocker = await blockedUserIds(adminId);
+    blockSymmetric =
+      seenByBlocked.includes(adminId) && seenByBlocker.includes(membre.id);
+
+    await db.block.deleteMany({
+      where: { blockerId: adminId, blockedId: membre.id },
+    });
+  }
+
+  // ── 9. Le fil : ni entrées importées, ni doublon critique/entrée ──
+  await db.user.update({
+    where: { id: adminId },
+    data: { visibility: "PUBLIC" },
+  });
+  await db.journalEntry.deleteMany({
+    where: { userId: adminId, reviewText: "Exactement le même texte, à la virgule près." },
+  });
+  await db.journalEntry.deleteMany({
+    where: { userId: adminId, importKey: "verify-imported" },
+  });
+
+  const DOUBLON = "Exactement le même texte, à la virgule près.";
+  // Saisie manuelle : **pas** d'importKey, sinon elle serait écartée du fil par
+  // la règle même qu'on vérifie plus bas. Le nettoyage se fait par identifiant.
+  const feedEntry = await db.journalEntry.create({
+    data: {
+      userId: adminId,
+      workId,
+      loggedAt: new Date(),
+      reviewText: DOUBLON,
+    },
+  });
+  // Une entrée importée : elle ne doit jamais atteindre le fil, sans quoi un
+  // import de 3 000 lignes noierait les abonnés.
+  const importedEntry = await db.journalEntry.create({
+    data: {
+      userId: adminId,
+      workId,
+      loggedAt: new Date(),
+      importKey: "verify-imported",
+    },
+  });
+  // Et la critique d'œuvre qui répète mot pour mot l'entrée.
+  await db.userWork.upsert({
+    where: { userId_workId: { userId: adminId, workId } },
+    update: { reviewText: DOUBLON, reviewedAt: new Date(), hiddenAt: null },
+    create: {
+      userId: adminId,
+      workId,
+      reviewText: DOUBLON,
+      reviewedAt: new Date(),
+    },
+  });
+
+  const feedSources = await fetchFeedSourcesForVerify(db, adminId);
+  const merged = buildFeedPage(feedSources, 50);
+
+  const feedHasImported = merged.items.some((i) => i.id === importedEntry.id);
+  // Le texte identique doit produire **un** élément, et ce doit être l'entrée
+  // de journal — elle porte date, sous-unité, revisionnage et étiquettes.
+  const dedupCount = merged.items.filter((i) => i.text === DOUBLON).length;
+  const dedupKeptEntry =
+    merged.items.find((i) => i.text === DOUBLON)?.kind === "entry";
+  const feedDescending = merged.items.every(
+    (item, i) => i === 0 || merged.items[i - 1].at >= item.at,
+  );
+
+  // ── 10. Masquage : le contenu sort du fil, sauf pour son auteur ──
+  await db.journalEntry.update({
+    where: { id: feedEntry.id },
+    data: { hiddenAt: new Date() },
+  });
+  const afterHide = buildFeedPage(
+    await fetchFeedSourcesForVerify(db, adminId),
+    50,
+  );
+  const hiddenLeftFeed = !afterHide.items.some((i) => i.id === feedEntry.id);
+
+  // Nettoyage de sortie : on rend le compte administrateur à son état.
+  await db.journalEntry.deleteMany({
+    where: { id: { in: [feedEntry.id, importedEntry.id] } },
+  });
+  await db.userWork.updateMany({
+    where: { userId: adminId, workId },
+    data: { reviewText: null, reviewedAt: null },
+  });
+  await db.user.update({
+    where: { id: adminId },
+    data: { visibility: previousVisibility },
+  });
+  await db.follow.deleteMany({ where: { followingId: adminId } });
+  await db.list.deleteMany({ where: { id: list.id } });
+  await db.report.deleteMany({ where: { targetLabel: list.title } });
+
+  return {
+    followDuplicateBlocked,
+    likesAcrossTargets,
+    likeDuplicateBlocked,
+    orphansAfterDelete,
+    accountDeleted,
+    reportSurvived,
+    privateBefore,
+    privateAfter,
+    blockSymmetric,
+    feedHasImported,
+    dedupCount,
+    dedupKeptEntry,
+    feedDescending,
+    hiddenLeftFeed,
+    ok:
+      followDuplicateBlocked &&
+      likesAcrossTargets === 2 &&
+      likeDuplicateBlocked &&
+      orphansAfterDelete === 0 &&
+      accountDeleted &&
+      reportSurvived &&
+      privateBefore === false &&
+      privateAfter === true &&
+      blockSymmetric &&
+      feedHasImported === false &&
+      dedupCount === 1 &&
+      dedupKeptEntry &&
+      feedDescending &&
+      hiddenLeftFeed,
+  };
+}
+
+/**
+ * Les trois sources du fil, telles que `feed-query.ts` les interroge.
+ *
+ * Les clauses sont recopiées ici plutôt qu'importées, parce que `getFeed` lit
+ * la session — et le script n'a pas de requête HTTP. C'est le seul endroit du
+ * lot où une requête est dupliquée : les filtres qui comptent (`importKey`,
+ * `hiddenAt`) sont donc vérifiés en tant que tels, et la fusion, elle, passe
+ * par la vraie `buildFeedPage`.
+ */
+async function fetchFeedSourcesForVerify(
+  client: PrismaClient,
+  userId: string,
+): Promise<FeedItem[][]> {
+  const before = new Date(Date.now() + 60_000);
+
+  const [entries, reviews] = await Promise.all([
+    client.journalEntry.findMany({
+      where: {
+        userId,
+        hiddenAt: null,
+        importKey: null,
+        createdAt: { lt: before },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 51,
+      select: { id: true, userId: true, createdAt: true, reviewText: true, workId: true },
+    }),
+    client.userWork.findMany({
+      where: {
+        userId,
+        hiddenAt: null,
+        reviewText: { not: null },
+        reviewedAt: { not: null, lt: before },
+      },
+      orderBy: { reviewedAt: "desc" },
+      take: 51,
+      select: { id: true, userId: true, reviewedAt: true, reviewText: true, workId: true },
+    }),
+  ]);
+
+  return [
+    entries.map((e) => ({
+      kind: "entry" as const,
+      id: e.id,
+      authorId: e.userId,
+      at: e.createdAt,
+      workId: e.workId,
+      text: e.reviewText,
+    })),
+    reviews.map((r) => ({
+      kind: "review" as const,
+      id: r.id,
+      authorId: r.userId,
+      at: r.reviewedAt!,
+      workId: r.workId,
+      text: r.reviewText,
+    })),
+  ];
 }
 
 /**
@@ -393,7 +820,7 @@ async function verifyLibrary(userId: string, mangaId: string, filmId: string) {
       !quoteOnFilm &&
       goalDuplicateBlocked &&
       favoriteCount === MAX_FAVORITES &&
-      doc.version === 2 &&
+      doc.version === 3 &&
       doc.lists.length > 0 &&
       csvOk,
   };

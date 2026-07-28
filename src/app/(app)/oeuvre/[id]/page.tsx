@@ -29,6 +29,8 @@ import { TagInput } from "@/components/tags/TagInput";
 import { TagPills } from "@/components/tags/TagPills";
 import { QuoteSection, type QuoteData } from "@/components/quotes/QuoteSection";
 import { EditionSection } from "@/components/editions/EditionSection";
+import { CorrectionDialog } from "@/components/social/CorrectionDialog";
+import { CorrectionQueue } from "@/components/social/CorrectionQueue";
 import { pageCountFor } from "@/lib/editions";
 import {
   JournalEntryCard,
@@ -140,6 +142,22 @@ export default async function OeuvrePage({
 
   const media = MEDIA[work.type];
   const canEdit = work.createdById === user.id || isAdmin(user);
+
+  // Propositions de correction en attente (D30) — visibles de ceux qui peuvent
+  // les appliquer, c'est-à-dire exactement ceux qui peuvent éditer la fiche.
+  const corrections = canEdit
+    ? await db.correctionSuggestion.findMany({
+        where: { workId: work.id, status: "OPEN" },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          field: true,
+          message: true,
+          createdAt: true,
+          author: { select: { name: true, username: true } },
+        },
+      })
+    : [];
   const cover = work.coverImageId ? `/api/uploads/${work.coverImageId}` : null;
   const totalEpisodes = work.seasons.reduce((n, s) => n + s.episodes.length, 0);
 
@@ -284,19 +302,15 @@ export default async function OeuvrePage({
                 </Button>
               </Link>
             ) : (
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled
-                title="Bientôt (lot 4)"
-              >
-                Proposer une correction
-              </Button>
+              // D30 : le contrepoids au droit d'édition réservé au créateur.
+              <CorrectionDialog workId={work.id} />
             )}
             {isAdmin(user) && (
               <DeleteWorkButton workId={work.id} title={work.titleFr} />
             )}
           </div>
+
+          {canEdit && <CorrectionQueue corrections={corrections} />}
         </div>
       </div>
 

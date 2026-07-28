@@ -55,6 +55,69 @@ export default async function ProfilPage() {
         }}
       />
 
+      {/* Social (lot 4) — en tête, parce que c'est la nouveauté qu'on cherche. */}
+      <section className="mt-8">
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
+          Social
+        </h2>
+        <Card className="flex flex-col divide-y divide-border p-0">
+          {user.username ? (
+            <Link
+              href={`/u/${user.username}`}
+              className="px-4 py-3 text-sm hover:bg-elevated"
+            >
+              🌍 Mon profil public
+              <span className="block text-xs text-muted">
+                /u/{user.username} — partageable par lien
+              </span>
+            </Link>
+          ) : (
+            // `User.username` est nullable : sans pseudonyme, il n'y a pas
+            // d'URL de profil. On le dit ici plutôt que de laisser un lien mort.
+            <div className="px-4 py-3 text-sm text-muted">
+              🌍 Mon profil public
+              <span className="block text-xs">
+                Choisissez un nom d&apos;utilisateur ci-dessus pour donner une
+                adresse à votre profil.
+              </span>
+            </div>
+          )}
+          <Link href="/fil" className="px-4 py-3 text-sm hover:bg-elevated">
+            📰 Mon fil
+            <span className="block text-xs text-muted">
+              L&apos;activité récente des membres que je suis
+            </span>
+          </Link>
+          <Link
+            href="/abonnements"
+            className="px-4 py-3 text-sm hover:bg-elevated"
+          >
+            👥 Mes abonnements
+            <span className="block text-xs text-muted">
+              Qui je suis, qui me suit, et les demandes en attente
+            </span>
+          </Link>
+          <Link
+            href="/notifications"
+            className="px-4 py-3 text-sm hover:bg-elevated"
+          >
+            🔔 Mes notifications
+            <span className="block text-xs text-muted">
+              Abonnements, j&apos;aime et commentaires
+            </span>
+          </Link>
+          <Link
+            href="/confidentialite"
+            className="px-4 py-3 text-sm hover:bg-elevated"
+          >
+            🔒 Confidentialité
+            <span className="block text-xs text-muted">
+              Qui voit mon profil, mon journal et mes statistiques
+            </span>
+          </Link>
+        </Card>
+      </section>
+
       {/* Accès mobile aux pages hors barre du bas — celle-ci est pleine. */}
       <section className="mt-8">
         <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">

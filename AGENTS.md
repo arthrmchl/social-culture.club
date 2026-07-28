@@ -133,11 +133,76 @@ modules `server-only`, qui lèvent une erreur sans cette condition.
   nomme sa cible (« Enregistrer les étiquettes », « Enregistrer la citation »)
   plutôt que de répéter « Enregistrer ».
 
+## Social (lot 4)
+
+- **Une seule porte de lecture.** Les lots 1 à 3 tiennent la règle « toute
+  lecture se referme sur `userId` » ; le lot 4 l'inverse. Elle ne s'ouvre donc
+  qu'en un endroit : `src/lib/social/read.ts`, qui renvoie **`null`** plutôt
+  qu'un objet partiel — une page qui oublierait de vérifier l'accès n'a alors
+  rien à afficher. Une règle ESLint interdit à `src/app/(public)/**` d'importer
+  `@/lib/db`.
+- **`notFound()`, jamais 403.** Compte inexistant, privé, bloqué ou banni : la
+  même réponse. Un 403 confirmerait l'existence du compte, et dirait à un bloqué
+  qu'il l'est. Vaut aussi pour `/moderation` et pour les refus d'action, qui
+  répondent « introuvable ».
+- **Décider sans base, charger à part.** `src/lib/visibility.ts` est pur et
+  testé par matrice ; `src/lib/social/access.ts` charge et ne lit **jamais** la
+  session — le visiteur lui est passé, ce qui permet à `scripts/verify.ts`
+  d'exercer le chemin réel hors requête HTTP (`session.ts` importe
+  `next/navigation`, incompatible avec `--conditions=react-server`). « Qui
+  regarde » vit dans `viewer.ts`.
+- **Ordre des règles d'accès, non négociable** : blocage (il prime même sur
+  l'administrateur — la modération passe par `/moderation`, pas par un profil),
+  puis soi-même, puis administrateur, puis banni, puis la visibilité du compte,
+  puis les drapeaux de section, qui ne peuvent que **retrancher**.
+- **Blocage** : stocké dans un sens, appliqué dans les deux. `blockedUserIds()`
+  est le seul endroit qui connaisse cette asymétrie. Bloquer supprime les
+  abonnements et notifications croisés, mais **pas** les j'aime ni les
+  commentaires — masqués à la lecture, donc le déblocage est réversible.
+- **Cibles sociales** : entrée de journal, liste, critique d'œuvre (`UserWork`),
+  portées par trois clés étrangères réelles et non un couple `(type, id)` — la
+  cascade l'impose. `src/lib/social-target.ts` est le point unique de traduction
+  vers les colonnes ; `targetFromColumns` **lève** si zéro ou deux sont
+  renseignées, car cet état ne peut venir que d'une écriture qui l'a contourné.
+- **`SocialLike` n'est pas `UserWork.liked`** : le premier aime un écrit (P3),
+  le second une œuvre (S6). Deux composants, deux libellés (« J'aime cette
+  œuvre »), jamais un compteur commun.
+- **Fil** : trois sources fusionnées en mémoire, pas de table `Activity`.
+  Ordonné sur `createdAt`/`reviewedAt` et jamais sur `loggedAt` — une entrée
+  antidatée n'est pas une actualité, et c'est la seule grandeur commune aux
+  sources, donc au curseur. **`importKey: null` est obligatoire** : sans lui un
+  import du lot 2 noie le fil de tous les abonnés. `dedupeReviewAndEntry`
+  tranche le doublon critique/entrée : texte identique → l'entrée gagne ; textes
+  différents → les deux ; jamais de déduplication par proximité temporelle.
+- **Notifications** : décision pure dans `notify-rules.ts` (jamais soi-même,
+  jamais à travers un blocage, jamais empiler une identique **non lue**),
+  écriture **dans la transaction du geste** — une écriture qui échoue ne doit
+  pas laisser de notification fantôme. Aucun marquage automatique au rendu.
+- **Modération** : aucun filtrage automatique (D25). Les FK d'un `Report` sont
+  en `SetNull` et son instantané (`targetKind`/`targetLabel`/`targetExcerpt`)
+  est figé — après suppression du contenu, c'est tout ce qui reste. Une critique
+  se **masque** seulement : le `UserWork` porte aussi le suivi du membre.
+- **Routage** : `src/proxy.ts` distingue `AUTH_PREFIXES` (les connectés y sont
+  renvoyés à l'accueil) d'`OPEN_PREFIXES` (`/u/`, ouvert avec ou sans session).
+  Le groupe `(public)` est en `force-dynamic` : le HTML dépend du visiteur.
+  `revalidatePath` purge **par chemin**, pas par visiteur — ce n'est jamais un
+  mécanisme de sécurité.
+- **Navigation** : la barre mobile reste pleine à 6. `/fil`, `/decouvrir` et
+  `/moderation` (admin) rejoignent `DESKTOP_ONLY` ; la cloche de notifications
+  vit dans la barre **supérieure** — c'est un indicateur, pas une entrée.
+- **`User.username` est nullable** : sans pseudonyme, pas d'URL de profil.
+  `updateVisibility` refuse `PUBLIC`/`MEMBERS` sans lui, et `/profil` le dit.
+- **E2E** : `e2e/global-setup.ts` purge l'état social des deux comptes seedés,
+  sinon le second run ne retrouve plus le bouton « Suivre ». Les gestes à
+  `confirm()` demandent un `page.once("dialog", …)`, et une action serveur
+  déclenchée par `useTransition` doit être **attendue à l'écran** avant de
+  naviguer.
+
 ## Lotissement
 
-Lots 0 (fondations), 1 (suivi), 2 (reprise de l'historique) et 3 (bibliothèque
-riche) sont livrés. À venir : social (lot 4), statistiques/rétrospective/PWA
-(lot 5).
+Lots 0 (fondations), 1 (suivi), 2 (reprise de l'historique), 3 (bibliothèque
+riche) et 4 (social) sont livrés. À venir : statistiques, rétrospective
+annuelle et PWA (lot 5).
 
 Les listes des exports Letterboxd sont désormais **importées** (événements
 `LIST_ITEM`), et les étiquettes du diary rejoignent `JournalEntryTag` au lieu
