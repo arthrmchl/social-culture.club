@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/session";
 import { revalidateWork } from "./revalidate";
 import { starsToScore } from "@/lib/rating";
 import { isStateAllowed } from "@/lib/status";
+import { usesPages } from "@/lib/media";
 import type { WorkStatusState } from "@/generated/prisma/enums";
 
 export type ActionResult = { ok: true } | { error: string };
@@ -143,7 +144,14 @@ const progressSchema = z.object({
   editionId: z.string().optional(),
 });
 
-/** Progression de lecture (L2) : historise + met à jour le cache du statut. */
+/**
+ * Progression de lecture (L2) : historise + met à jour le cache du statut.
+ *
+ * Une page n'a de sens que rapportée à l'édition qu'on lit (lot 5) : « page 150
+ * sur 380 » ne veut rien dire du poche au broché. Un média suivi à la page
+ * exige donc l'édition, et chaque ligne d'historique la porte — sans quoi deux
+ * lectures d'éditions différentes se mélangeraient dans la même courbe.
+ */
 export async function updateReadingProgress(
   workId: string,
   input: { page?: number | null; percent?: number | null; editionId?: string },
@@ -154,6 +162,23 @@ export async function updateReadingProgress(
   const { page, percent, editionId } = parsed.data;
   if (page == null && percent == null) {
     return { error: "Renseignez une page ou un pourcentage." };
+  }
+
+  const type = await workType(workId);
+  if (!type) return { error: "Œuvre introuvable." };
+
+  if (usesPages(type)) {
+    if (!editionId) {
+      return { error: "Précisez d'abord l'édition que vous lisez." };
+    }
+    // L'édition doit être celle de cette œuvre — la sienne ou celle d'un de ses
+    // tomes, comme partout ailleurs (voir `setMyEdition`).
+    const edition = await db.edition.findUnique({
+      where: { id: editionId },
+      select: { workId: true, tome: { select: { workId: true } } },
+    });
+    const owner = edition?.workId ?? edition?.tome?.workId ?? null;
+    if (owner !== workId) return { error: "Édition introuvable." };
   }
 
   await db.$transaction(async (tx) => {

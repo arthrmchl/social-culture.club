@@ -34,7 +34,7 @@ import {
 } from "@/components/editions/EditionSection";
 import { CorrectionDialog } from "@/components/social/CorrectionDialog";
 import { CorrectionQueue } from "@/components/social/CorrectionQueue";
-import { pageCountFor } from "@/lib/editions";
+import { editionLabel, pageCountFor } from "@/lib/editions";
 import { pickCoverImageId } from "@/lib/covers";
 import { languageLabel } from "@/lib/languages";
 import {
@@ -232,7 +232,12 @@ export default async function OeuvrePage({
     ...e,
     translators: e.creators.map((c) => c.person.name),
   }));
+  // L'en-tête annonce la pagination de référence (mon édition, sinon celle par
+  // défaut) : c'est une information de catalogue. Le suivi, lui, exige que
+  // j'aie désigné la mienne.
   const readingPageCount = pageCountFor(work.editions, userWork?.editionId);
+  const myEdition =
+    work.editions.find((e) => e.id === userWork?.editionId) ?? null;
   const originalLanguage = languageLabel(work.originalLanguage);
   const tags = workTags.map((wt) => wt.tag);
   const quoteItems: QuoteData[] = quotes.map((q) => ({
@@ -400,7 +405,7 @@ export default async function OeuvrePage({
 
       {/* Éditions (lot 3, L6, D8) — le modèle dormait en base depuis le lot 0 */}
       {isReading(work.type) && (
-        <section>
+        <section id="editions">
           <SectionTitle>Éditions</SectionTitle>
           <EditionSection
             workId={work.id}
@@ -473,17 +478,38 @@ export default async function OeuvrePage({
         </section>
       )}
 
-      {usesPages(work.type) && (
+      {/*
+        Suivi à la page : il n'a de sens que rapporté à une édition (lot 5).
+        Sans édition décrite, rien à suivre ; sans édition désignée, on demande
+        laquelle avant d'ouvrir la saisie.
+      */}
+      {usesPages(work.type) && work.editions.length > 0 && (
         <section>
           <SectionTitle>Progression de lecture</SectionTitle>
           <Card className="p-4">
-            <ReadingProgressWidget
-              workId={work.id}
-              currentPage={userWork?.currentPage ?? null}
-              currentPercent={userWork?.progressPercent ?? null}
-              // La pagination suit l'édition lue quand elle est précisée (D8).
-              pageCount={readingPageCount}
-            />
+            {myEdition ? (
+              <div className="flex flex-col gap-2">
+                <p className="text-xs text-muted">
+                  Édition lue : {editionLabel(myEdition)}
+                </p>
+                <ReadingProgressWidget
+                  workId={work.id}
+                  editionId={myEdition.id}
+                  currentPage={userWork?.currentPage ?? null}
+                  currentPercent={userWork?.progressPercent ?? null}
+                  pageCount={myEdition.pageCount}
+                />
+              </div>
+            ) : (
+              <p className="text-sm text-muted">
+                Désignez l&apos;édition que vous lisez pour suivre votre
+                progression —{" "}
+                <a href="#editions" className="text-accent hover:underline">
+                  choisir mon édition
+                </a>
+                .
+              </p>
+            )}
           </Card>
         </section>
       )}

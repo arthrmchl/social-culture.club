@@ -10,7 +10,6 @@ import {
 import { requireUser } from "@/lib/session";
 import { db } from "@/lib/db";
 import { resolveCovers } from "@/lib/cover-loader";
-import { pageCountFor } from "@/lib/editions";
 import { MEDIA, MEDIA_ORDER, usesPages } from "@/lib/media";
 import { ListCard } from "@/components/lists/ListCard";
 import { goalProgress, scopeEmoji, scopeLabel } from "@/lib/goals";
@@ -112,7 +111,11 @@ export default async function AccueilPage() {
   // Une seule passe pour toutes les vignettes de la page : la couverture d'une
   // lecture se résout sur ses éditions (lot 5), du point de vue de son lecteur.
   const covers = await resolveCovers(
-    [...recent, ...inProgress.map((uw) => uw.work), ...recentEntries.map((e) => e.work)],
+    [
+      ...recent,
+      ...inProgress.map((uw) => uw.work),
+      ...recentEntries.map((e) => e.work),
+    ],
     user.id,
   );
   const withCover = <T extends { id: string }>(w: T) => ({
@@ -181,25 +184,41 @@ export default async function AccueilPage() {
           <div className="flex flex-col gap-4">
             {reads.length > 0 && (
               <div className="flex flex-col gap-2">
-                {reads.map((uw) => (
-                  <Card
-                    key={uw.id}
-                    className="flex flex-wrap items-center justify-between gap-3 p-3"
-                  >
-                    <Link
-                      href={`/oeuvre/${uw.work.id}`}
-                      className="text-sm font-medium hover:text-accent"
+                {reads.map((uw) => {
+                  // Pas de saisie sans édition désignée (lot 5) : une page ne
+                  // veut rien dire tant qu'on ignore quel tirage est lu.
+                  const edition =
+                    uw.work.editions.find((e) => e.id === uw.editionId) ?? null;
+                  return (
+                    <Card
+                      key={uw.id}
+                      className="flex flex-wrap items-center justify-between gap-3 p-3"
                     >
-                      {MEDIA[uw.work.type].emoji} {uw.work.titleFr}
-                    </Link>
-                    <ReadingProgressWidget
-                      workId={uw.work.id}
-                      currentPage={uw.currentPage}
-                      currentPercent={uw.progressPercent}
-                      pageCount={pageCountFor(uw.work.editions, uw.editionId)}
-                    />
-                  </Card>
-                ))}
+                      <Link
+                        href={`/oeuvre/${uw.work.id}`}
+                        className="text-sm font-medium hover:text-accent"
+                      >
+                        {MEDIA[uw.work.type].emoji} {uw.work.titleFr}
+                      </Link>
+                      {edition ? (
+                        <ReadingProgressWidget
+                          workId={uw.work.id}
+                          editionId={edition.id}
+                          currentPage={uw.currentPage}
+                          currentPercent={uw.progressPercent}
+                          pageCount={edition.pageCount}
+                        />
+                      ) : (
+                        <Link
+                          href={`/oeuvre/${uw.work.id}#editions`}
+                          className="text-sm text-accent hover:underline"
+                        >
+                          Préciser l&apos;édition lue
+                        </Link>
+                      )}
+                    </Card>
+                  );
+                })}
               </div>
             )}
             {watching.length > 0 && (

@@ -57,11 +57,18 @@ modules `server-only`, qui lèvent une erreur sans cette condition.
   le « regard » du propriétaire de l'écran — moi sur mes pages, l'auteur de
   l'élément dans le fil et sur un profil. D31 (visuel obligatoire) ne vaut donc
   plus que pour les médias non-lecture, et `worksOwnCover` en est le seul juge.
+- **Pas de suivi à la page sans édition désignée** : une page ne se compte que
+  dans un tirage précis. La section « Progression de lecture » disparaît si
+  l'œuvre n'a aucune édition, invite à en désigner une tant que
+  `UserWork.editionId` est vide, et chaque `ReadingProgress` porte son
+  `editionId` — `updateReadingProgress` le **refuse** sinon, la garde n'est pas
+  seulement dans l'interface. L'en-tête de fiche, lui, annonce la pagination de
+  référence (`pageCountFor` : la mienne, sinon celle par défaut), qui est une
+  information de catalogue et non de suivi.
 - **Pas de type « one-shot »** : un manga en un volume est un `MANGA_SERIES` à
   un tome, suivi au tome comme les autres. Un type dédié aurait suivi la page
   (`usesPages`) alors que tout le reste du manga suit le tome (`usesTomes`).
-  `usesPages` ne vaut donc que pour `BOOK`, et la pagination vient de l'édition
-  lue (`pageCountFor`) — une œuvre n'en a pas.
+  `usesPages` ne vaut donc que pour `BOOK`.
 - **Logique pure et testée** dans `src/lib/` (`rating`, `status`, `progress`,
   `text`, `generators`) avec un `*.test.ts` voisin. `tracking.ts`, `search.ts`,
   `session.ts` sont `server-only`.

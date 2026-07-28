@@ -57,13 +57,22 @@ async function createWork(opts: {
   await expect(page).toHaveURL(/\/oeuvre\/.+/);
 }
 
-/** Ajoute une édition depuis la fiche ouverte, et attend qu'elle apparaisse. */
+/**
+ * Ajoute une édition depuis la fiche ouverte, la désigne comme celle qu'on lit
+ * (sans quoi la progression à la page reste fermée — lot 5), et attend que
+ * l'écran l'ait enregistré.
+ */
 async function addEdition(opts: { publisher: string; pages?: string }) {
   await page.getByRole("button", { name: "Ajouter une édition" }).click();
   await page.fill("#ed-publisher", opts.publisher);
   if (opts.pages) await page.fill("#ed-pages", opts.pages);
   await page.getByRole("button", { name: "Ajouter", exact: true }).click();
   await expect(page.getByText("par défaut").first()).toBeVisible({
+    timeout: 10000,
+  });
+
+  await page.getByRole("button", { name: "Je lis celle-ci" }).first().click();
+  await expect(page.getByText("je lis celle-ci").first()).toBeVisible({
     timeout: 10000,
   });
 }

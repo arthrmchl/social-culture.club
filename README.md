@@ -217,10 +217,12 @@ Suivi (lot 1), sur une fiche :
     « X/Y tomes lus » et le statut se mettent à jour.
 12. **Livre** : ajouter une **édition** (éditeur, titre, langue, traducteur,
     ISBN, pages, couverture) — elle devient l'édition par défaut et sa
-    couverture apparaît au catalogue. En ajouter une seconde, la marquer
-    « je lis celle-ci » : la pagination et la vignette suivent. Mettre à jour la
+    couverture apparaît au catalogue. Tant qu'aucune édition n'est **désignée**,
+    la progression de lecture invite à en choisir une — et elle n'apparaît pas
+    du tout sans édition. Cliquer « Je lis celle-ci », puis mettre à jour la
     **page courante** (depuis la fiche ou l'accueil) ; le statut passe à
-    « en cours ». Chercher l'**ISBN** d'une édition retrouve l'œuvre.
+    « en cours ». En ajouter une seconde et la désigner : la pagination et la
+    vignette suivent. Chercher l'**ISBN** d'une édition retrouve l'œuvre.
 13. Marquer une œuvre **« à voir »** → elle apparaît dans **`/watchlist`**.
 
 Reprise de l'historique (lot 2) :

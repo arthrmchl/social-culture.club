@@ -46,6 +46,8 @@ test("un livre se crée sans visuel : D31 ne vaut plus pour une lecture", async 
   await expect(page.getByRole("heading", { name: BOOK })).toBeVisible();
   // Sans édition, la vignette est générée : aucune image téléversée.
   await expect(page.locator('img[alt=""]')).toHaveCount(0);
+  // Et rien à suivre à la page : une page se compte dans un tirage précis.
+  await expect(page.getByText("Progression de lecture")).toHaveCount(0);
 });
 
 test("l'édition porte la couverture, le catalogue la reprend", async () => {
@@ -76,6 +78,29 @@ test("l'édition porte la couverture, le catalogue la reprend", async () => {
   await expect(
     page.locator(`a[href="${new URL(workUrl).pathname}"] img`),
   ).toBeVisible();
+  await page.goto(workUrl);
+});
+
+test("la progression à la page attend qu'une édition soit désignée", async () => {
+  // L'édition existe mais n'est pas la mienne : la section invite à choisir.
+  await expect(page.getByText("Progression de lecture")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "choisir mon édition" }),
+  ).toBeVisible();
+  await expect(page.getByRole("spinbutton")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Je lis celle-ci" }).first().click();
+  await expect(page.getByText("je lis celle-ci").first()).toBeVisible({
+    timeout: 10000,
+  });
+
+  // Désignée, elle ouvre la saisie et lui donne sa pagination.
+  await expect(
+    page.getByText(/Édition lue : Ulysse · Gallimard/),
+  ).toBeVisible();
+  await page.getByRole("spinbutton").first().fill("150");
+  await page.getByRole("button", { name: "Mettre à jour" }).click();
+  await expect(page.locator("select")).toHaveValue("IN_PROGRESS");
 });
 
 test("la recherche retrouve l'œuvre par l'ISBN de son édition", async () => {

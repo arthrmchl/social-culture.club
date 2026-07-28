@@ -8,14 +8,20 @@ import { Button } from "./ui/Button";
 /**
  * Mise à jour rapide de la progression de lecture (L2, N1).
  * Page si la pagination est connue, sinon pourcentage. Historisé côté serveur.
+ *
+ * `editionId` est **requis** : on ne suit une lecture qu'une fois désignée
+ * l'édition lue (lot 5). Le typage oblige donc l'appelant à avoir tranché
+ * avant de rendre ce composant.
  */
 export function ReadingProgressWidget({
   workId,
+  editionId,
   currentPage,
   currentPercent,
   pageCount,
 }: {
   workId: string;
+  editionId: string;
   currentPage: number | null;
   currentPercent: number | null;
   pageCount: number | null;
@@ -54,10 +60,10 @@ export function ReadingProgressWidget({
     }
     setError(null);
     start(async () => {
-      const res = await updateReadingProgress(
-        workId,
-        usePage ? { page: value } : { percent: Math.min(100, value) },
-      );
+      const res = await updateReadingProgress(workId, {
+        ...(usePage ? { page: value } : { percent: Math.min(100, value) }),
+        editionId,
+      });
       if ("error" in res) setError(res.error);
     });
   }
