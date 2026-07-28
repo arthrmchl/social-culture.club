@@ -26,7 +26,6 @@ import {
   type ImportedFile,
 } from "../src/lib/import/types";
 import { applyEditionCoverage } from "../src/lib/tracking";
-import { isReading } from "../src/lib/media";
 import { pageCountFor } from "../src/lib/editions";
 import { pickCoverImageId } from "../src/lib/covers";
 import { resolveCovers } from "../src/lib/cover-loader";
@@ -191,7 +190,7 @@ async function main() {
   const lot2 = await verifyImports(admin.id);
 
   // ── Lot 3 : bibliothèque riche ───────────────────────────────
-  const lot3 = await verifyLibrary(admin.id, manga.id, film.id);
+  const lot3 = await verifyLibrary(admin.id, manga.id);
 
   // ── Lot 4 : social ───────────────────────────────────────────
   const lot4 = await verifySocial(admin.id, film.id);
@@ -251,16 +250,13 @@ async function main() {
     `Édition par défaut    : ${lot3.defaultCount} sur ${lot3.editionCount} éditions (attendu 1)`,
   );
   console.log(
-    `Citation — lecture/film : ${lot3.quoteOnReading}/${lot3.quoteOnFilm} (attendu true/false — D9)`,
-  );
-  console.log(
     `Objectif — doublon rejeté : ${lot3.goalDuplicateBlocked} (attendu true)`,
   );
   console.log(
     `Favoris — plafond ${lot3.favoriteCap} respecté : ${lot3.favoriteCount} (attendu ${lot3.favoriteCap})`,
   );
   console.log(
-    `Export — version ${lot3.exportVersion}, ${lot3.exportEntities} entités CSV (attendu 4 et 18)`,
+    `Export — version ${lot3.exportVersion}, ${lot3.exportEntities} entités CSV (attendu 5 et 17)`,
   );
 
   console.log(
@@ -841,12 +837,11 @@ async function fetchFeedSourcesForVerify(
  * d'unicité tiennent réellement, que la couverture d'une intégrale est
  * idempotente, et que l'export nomme bien toutes ses entités.
  */
-async function verifyLibrary(userId: string, mangaId: string, filmId: string) {
+async function verifyLibrary(userId: string, mangaId: string) {
   await db.tomeProgress.deleteMany({
     where: { userId, tome: { workId: mangaId } },
   });
   await db.edition.deleteMany({ where: { workId: mangaId } });
-  await db.quote.deleteMany({ where: { userId } });
   await db.goal.deleteMany({ where: { userId } });
   await db.favorite.deleteMany({ where: { userId } });
 
@@ -895,16 +890,7 @@ async function verifyLibrary(userId: string, mangaId: string, filmId: string) {
   });
   const editionCount = await db.edition.count({ where: { workId: mangaId } });
 
-  // 3. Citations : lectures uniquement (D9).
-  const manga = await db.work.findUniqueOrThrow({ where: { id: mangaId } });
-  const film = await db.work.findUniqueOrThrow({ where: { id: filmId } });
-  const quoteOnReading = isReading(manga.type);
-  const quoteOnFilm = isReading(film.type);
-  await db.quote.create({
-    data: { userId, workId: mangaId, text: "Un passage.", page: 42 },
-  });
-
-  // 4. Objectifs : une seule cible par année et par portée.
+  // 3. Objectifs : une seule cible par année et par portée.
   const year = new Date().getFullYear();
   await db.goal.create({
     data: { userId, year, scope: "READINGS", target: 10 },
@@ -918,7 +904,7 @@ async function verifyLibrary(userId: string, mangaId: string, filmId: string) {
     goalDuplicateBlocked = true;
   }
 
-  // 5. Favoris : le plafond est tenu par l'action, la base garantit l'unicité.
+  // 4. Favoris : le plafond est tenu par l'action, la base garantit l'unicité.
   const works = await db.work.findMany({
     take: MAX_FAVORITES,
     select: { id: true },
@@ -928,13 +914,12 @@ async function verifyLibrary(userId: string, mangaId: string, filmId: string) {
   });
   const favoriteCount = await db.favorite.count({ where: { userId } });
 
-  // 6. Export : le document annonce sa version et couvre toutes ses entités.
+  // 5. Export : le document annonce sa version et couvre toutes ses entités.
   const doc = await collectUserExport(userId);
   const csvOk = CSV_ENTITIES.every(
     (entity) => entityToCsv(doc, entity).length > 0,
   );
 
-  await db.quote.deleteMany({ where: { userId } });
   await db.goal.deleteMany({ where: { userId } });
   await db.favorite.deleteMany({ where: { userId } });
   await db.edition.deleteMany({ where: { workId: mangaId } });
@@ -945,8 +930,6 @@ async function verifyLibrary(userId: string, mangaId: string, filmId: string) {
     readAfterSecond,
     defaultCount,
     editionCount,
-    quoteOnReading,
-    quoteOnFilm,
     goalDuplicateBlocked,
     favoriteCount,
     favoriteCap: MAX_FAVORITES,
@@ -958,11 +941,9 @@ async function verifyLibrary(userId: string, mangaId: string, filmId: string) {
       readAfterSecond === 5 &&
       defaultCount === 1 &&
       editionCount === 2 &&
-      quoteOnReading &&
-      !quoteOnFilm &&
       goalDuplicateBlocked &&
       favoriteCount === MAX_FAVORITES &&
-      doc.version === 4 &&
+      doc.version === 5 &&
       doc.lists.length > 0 &&
       csvOk,
   };

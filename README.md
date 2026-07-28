@@ -158,8 +158,6 @@ Lot 3 :
   et « science fiction » sont la même étiquette.
 - **S11** quatre favoris de profil, tous médias confondus — distincts du
   « j'aime » (S6), qui reste une réaction à l'œuvre.
-- **L3/D9** citations rattachées aux lectures uniquement (`/citations`) ; le
-  modèle reste ouvert aux autres médias, seule l'action les restreint.
 - **L5/D12** objectifs annuels par portée, dont « Lectures » activée par défaut
   (`/objectifs`). Est compté ce qui est consigné au journal dans l'année.
 - **L6/D8** éditions et intégrales : édition par défaut, édition lue (qui

@@ -1,7 +1,7 @@
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 
 // Lot 3 — bibliothèque riche : listes multi-médias, étiquettes, favoris de
-// profil, citations, objectifs annuels, éditions et bibliothèque filtrable.
+// profil, objectifs annuels, éditions et bibliothèque filtrable.
 
 const ADMIN = { email: "admin@social-culture.club", password: "changeme123" };
 
@@ -123,30 +123,6 @@ test("met une œuvre en favori de profil", async () => {
   await page.goto("/profil");
   await expect(page.getByText("Mes favoris")).toBeVisible();
   await expect(page.locator('a[href^="/oeuvre/"]').first()).toBeVisible();
-});
-
-test("ajoute une citation à une lecture, mais pas à un film", async () => {
-  // Les citations ne concernent que les lectures (D9).
-  await page.goto("/catalogue?type=MANGA_SERIES");
-  await page.locator('a[href^="/oeuvre/"]').first().click();
-
-  await expect(page.getByText("Citations")).toBeVisible();
-  await page.getByRole("button", { name: "❝ Ajouter une citation" }).click();
-  await page.fill("#quote-text", `Un passage retenu ${S}.`);
-  await page.fill("#quote-page", "42");
-  await page.getByRole("button", { name: "Enregistrer la citation" }).click();
-
-  await expect(page.getByText(`Un passage retenu ${S}.`)).toBeVisible();
-
-  await page.goto("/citations");
-  await expect(page.getByText(`Un passage retenu ${S}.`)).toBeVisible();
-
-  // Sur un film, la section n'existe pas.
-  await page.goto("/catalogue?type=FILM");
-  await page.locator('a[href^="/oeuvre/"]').first().click();
-  await expect(
-    page.getByRole("button", { name: "❝ Ajouter une citation" }),
-  ).toHaveCount(0);
 });
 
 test("crée une intégrale et marque les tomes qu'elle couvre", async () => {

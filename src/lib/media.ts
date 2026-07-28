@@ -90,7 +90,7 @@ export function usesPages(type: WorkType): boolean {
 
 /**
  * Une lecture, au sens de D9 et D12 : livres, BD, mangas. C'est le périmètre
- * des citations (L3) et de l'objectif « lectures » (L5).
+ * des éditions (D8) et de l'objectif « lectures » (L5).
  */
 export function isReading(type: WorkType): boolean {
   return usesPages(type) || usesTomes(type);

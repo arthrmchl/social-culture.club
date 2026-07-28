@@ -157,15 +157,6 @@ export default async function ProfilPage() {
             </span>
           </Link>
           <Link
-            href="/citations"
-            className="px-4 py-3 text-sm hover:bg-elevated"
-          >
-            ❝ Mes citations
-            <span className="block text-xs text-muted">
-              Les passages sauvegardés de vos lectures
-            </span>
-          </Link>
-          <Link
             href="/objectifs"
             className="px-4 py-3 text-sm hover:bg-elevated"
           >

@@ -27,7 +27,6 @@ import { AddToListButton } from "@/components/lists/AddToListButton";
 import { FavoriteButton } from "@/components/FavoriteButton";
 import { TagInput } from "@/components/tags/TagInput";
 import { TagPills } from "@/components/tags/TagPills";
-import { QuoteSection, type QuoteData } from "@/components/quotes/QuoteSection";
 import {
   EditionSection,
   type EditionData,
@@ -88,7 +87,6 @@ export default async function OeuvrePage({
     contextRows,
     listMemberships,
     workTags,
-    quotes,
     favorite,
   ] = await Promise.all([
     db.userWork.findUnique({
@@ -132,17 +130,6 @@ export default async function OeuvrePage({
       where: { workId: id, tag: { userId: user.id } },
       select: { tag: { select: { name: true, slug: true } } },
       orderBy: { tag: { name: "asc" } },
-    }),
-    db.quote.findMany({
-      where: { userId: user.id, workId: id },
-      orderBy: [{ page: "asc" }, { createdAt: "asc" }],
-      select: {
-        id: true,
-        text: true,
-        page: true,
-        note: true,
-        tome: { select: { number: true } },
-      },
     }),
     db.favorite.findUnique({
       where: { userId_workId: { userId: user.id, workId: id } },
@@ -240,13 +227,6 @@ export default async function OeuvrePage({
     work.editions.find((e) => e.id === userWork?.editionId) ?? null;
   const originalLanguage = languageLabel(work.originalLanguage);
   const tags = workTags.map((wt) => wt.tag);
-  const quoteItems: QuoteData[] = quotes.map((q) => ({
-    id: q.id,
-    text: q.text,
-    page: q.page,
-    note: q.note,
-    tomeNumber: q.tome?.number ?? null,
-  }));
 
   return (
     <div className="flex flex-col gap-8">
@@ -425,18 +405,6 @@ export default async function OeuvrePage({
           <TagInput target={{ kind: "work", id: work.id }} tags={tags} />
         </div>
       </section>
-
-      {/* Citations (lot 3, L3 — lectures uniquement, D9) */}
-      {isReading(work.type) && (
-        <section>
-          <SectionTitle>Citations</SectionTitle>
-          <QuoteSection
-            workId={work.id}
-            quotes={quoteItems}
-            tomes={work.tomes.map((t) => ({ id: t.id, number: t.number }))}
-          />
-        </section>
-      )}
 
       {/* Listes (lot 3, S9) */}
       <section>

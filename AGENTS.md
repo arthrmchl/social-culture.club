@@ -129,8 +129,8 @@ modules `server-only`, qui lèvent une erreur sans cette condition.
 
 ## Bibliothèque riche (lot 3)
 
-- **Données individuelles** : listes, étiquettes, favoris, citations et
-  objectifs appartiennent à leur auteur. Toute lecture comme toute écriture se
+- **Données individuelles** : listes, étiquettes, favoris et objectifs
+  appartiennent à leur auteur. Toute lecture comme toute écriture se
   referme sur `userId` — y compris pour retirer une étiquette d'une œuvre du
   catalogue partagé, où plusieurs membres peuvent en avoir posé.
 - **Étiquettes** : l'identité d'un tag est son **slug**, pas son libellé ; le
@@ -161,7 +161,7 @@ modules `server-only`, qui lèvent une erreur sans cette condition.
   `/catalogue`, `/listes`, `/import` et `/invitations` vivent dans
   `DESKTOP_ONLY` et sont atteignables au mobile depuis `/profil`.
 - **Boutons** : sur une fiche, plusieurs formulaires cohabitent — un libellé
-  nomme sa cible (« Enregistrer les étiquettes », « Enregistrer la citation »)
+  nomme sa cible (« Enregistrer les étiquettes », « Enregistrer l'édition »)
   plutôt que de répéter « Enregistrer ».
 
 ## Social (lot 4)

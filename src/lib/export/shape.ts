@@ -10,8 +10,7 @@
 export const EXPORT_FORMAT = "social-culture.club";
 
 /**
- * Version 2 (lot 3) : listes, étiquettes, favoris, citations, objectifs et
- * éditions. Le numéro change parce qu'un lecteur doit pouvoir distinguer
+ * Version 2 (lot 3) : listes, étiquettes, favoris, objectifs et éditions. Le numéro change parce qu'un lecteur doit pouvoir distinguer
  * « pas de listes parce que l'utilisateur n'en a pas » de « pas de listes
  * parce que c'est un export d'avant le lot 3 ».
  *
@@ -26,8 +25,13 @@ export const EXPORT_FORMAT = "social-culture.club";
  * traducteurs ; l'œuvre gagne sa langue originale. Sans changement de version,
  * un lecteur ne saurait pas si un livre sans ISBN vient d'un export antérieur
  * ou d'une fiche sans édition décrite.
+ *
+ * Version 5 : les citations sont retirées de l'application. L'entité disparaît
+ * du document plutôt que d'y rester vide — et la version le dit, sans quoi un
+ * export récent serait indiscernable d'un export où l'utilisateur n'en avait
+ * simplement jamais saisi.
  */
-export const EXPORT_VERSION = 4;
+export const EXPORT_VERSION = 5;
 
 export type ExportedWork = {
   id: string;
@@ -92,7 +96,6 @@ export type ExportedDocument = {
   lists: unknown[];
   tags: unknown[];
   favorites: unknown[];
-  quotes: unknown[];
   goals: unknown[];
   // Social (lot 4) — les gestes de l'utilisateur, pas ceux qu'il a reçus.
   follows: unknown[];
@@ -129,7 +132,6 @@ export const CSV_ENTITIES = [
   "listes",
   "tags",
   "favoris",
-  "citations",
   "objectifs",
   "editions",
   // Social (lot 4)
@@ -157,7 +159,6 @@ export const ENTITY_LABELS: Record<CsvEntity, string> = {
   listes: "Listes et leurs éléments",
   tags: "Étiquettes",
   favoris: "Favoris de profil",
-  citations: "Citations",
   objectifs: "Objectifs annuels",
   editions: "Éditions",
   abonnements: "Abonnements",

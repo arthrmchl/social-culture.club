@@ -38,7 +38,6 @@ export async function collectUserExport(
     lists,
     tags,
     favorites,
-    quotes,
     goals,
     follows,
     socialLikes,
@@ -117,14 +116,6 @@ export async function collectUserExport(
       where: { userId },
       orderBy: { position: "asc" },
     }),
-    db.quote.findMany({
-      where: { userId },
-      orderBy: [{ workId: "asc" }, { page: "asc" }, { createdAt: "asc" }],
-      include: {
-        tome: { select: { number: true } },
-        edition: { select: { publisher: true, format: true, isbn: true } },
-      },
-    }),
     db.goal.findMany({
       where: { userId },
       orderBy: [{ year: "desc" }, { scope: "asc" }],
@@ -191,7 +182,6 @@ export async function collectUserExport(
     ...lists.flatMap((l) => l.items.map((i) => i.workId)),
     ...tags.flatMap((t) => t.works.map((w) => w.workId)),
     ...favorites.map((f) => f.workId),
-    ...quotes.map((q) => q.workId),
     // Les œuvres qu'on a aimées ou commentées chez d'autres : sans elles, la
     // ligne d'export sortirait sans titre.
     ...socialLikes.flatMap((l) =>
@@ -318,15 +308,6 @@ export async function collectUserExport(
     favorites: favorites.map((f) => ({
       position: f.position,
       workId: f.workId,
-    })),
-    quotes: quotes.map((q) => ({
-      workId: q.workId,
-      tomeNumber: q.tome?.number ?? null,
-      edition: q.edition ? editionLabel(q.edition) : null,
-      text: q.text,
-      page: q.page,
-      note: q.note,
-      createdAt: q.createdAt.toISOString(),
     })),
     goals: goals.map((g) => ({
       year: g.year,
@@ -610,18 +591,6 @@ export function entityToCsv(doc: ExportedDocument, entity: CsvEntity): string {
         col("Identifiant œuvre", (r) => r.workId),
       ]);
 
-    case "citations":
-      return toCsv(doc.quotes as QuoteRow[], [
-        col("Œuvre", titre),
-        col("Identifiant œuvre", (r) => r.workId),
-        col("Tome", (r) => r.tomeNumber),
-        col("Édition", (r) => r.edition),
-        col("Page", (r) => r.page),
-        col("Texte", (r) => r.text),
-        col("Commentaire", (r) => r.note),
-        col("Noté le", (r) => r.createdAt),
-      ]);
-
     case "objectifs":
       return toCsv(doc.goals as GoalRow[], [
         col("Année", (r) => r.year),
@@ -824,15 +793,6 @@ type FlatTagRow = {
   loggedAt: string | null;
 };
 type FavoriteRow = { position: number; workId: string };
-type QuoteRow = {
-  workId: string;
-  tomeNumber: number | null;
-  edition: string | null;
-  text: string;
-  page: number | null;
-  note: string | null;
-  createdAt: string;
-};
 type GoalRow = {
   year: number;
   scope: string;

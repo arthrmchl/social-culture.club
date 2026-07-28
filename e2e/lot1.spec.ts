@@ -93,7 +93,7 @@ test("film : note, j'aime, entrée de journal (revisionnage)", async () => {
   await page.getByRole("button", { name: /Ajouter au journal/ }).click();
   await page.getByLabel("Revisionnage / relecture").check();
   // `exact` : la fiche porte d'autres boutons dont le nom commence par
-  // « Enregistrer » (étiquettes, citations — lot 3).
+  // « Enregistrer » (les étiquettes, l'édition — lots 3 et 5).
   await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
 
   await expect(page.getByText(/1 visionnage au journal/)).toBeVisible();

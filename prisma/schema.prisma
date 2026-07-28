@@ -76,7 +76,6 @@ model User {
   lists     List[]
   tags      Tag[]
   favorites Favorite[]
-  quotes    Quote[]
   goals     Goal[]
 
   // social (lot 4)
@@ -224,7 +223,6 @@ model Work {
   listItems ListItem[]
   tags      WorkTag[]
   favorites Favorite[]
-  quotes    Quote[]
 
   // social (lot 4)
   corrections   CorrectionSuggestion[]
@@ -323,7 +321,6 @@ model Tome {
 
   progress       TomeProgress[]
   journalEntries JournalEntry[]
-  quotes         Quote[]
 
   @@unique([workId, number])
 }
@@ -363,7 +360,6 @@ model Edition {
   creators        EditionCreator[]
   journalEntries  JournalEntry[]
   readingProgress ReadingProgress[]
-  quotes          Quote[]
   userWorks       UserWork[]
 
   @@index([workId])
@@ -788,7 +784,7 @@ model ImportRow {
 // Bibliothèque riche (lot 3) — ranger, annoter, se fixer un cap.
 //
 // Tout ce qui suit est **personnel** : le catalogue reste partagé (D29), mais
-// une liste, une étiquette, une citation ou un objectif n'appartiennent qu'à
+// une liste, une étiquette, un favori ou un objectif n'appartiennent qu'à
 // leur auteur, au même titre que le journal et les statuts du lot 1.
 // ─────────────────────────────────────────────────────────────
 
@@ -915,34 +911,6 @@ model Favorite {
 
   @@unique([userId, workId])
   @@index([userId, position])
-}
-
-/// Un passage sauvegardé (L3, D9 : lectures uniquement). Le modèle ne
-/// restreint pas le type d'œuvre — l'extension à d'autres médias ne demandera
-/// pas de migration ; la règle est portée par l'action et l'interface.
-model Quote {
-  id     String @id @default(cuid())
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workId String
-  work   Work   @relation(fields: [workId], references: [id], onDelete: Cascade)
-
-  /// Tome précis (BD, manga) et édition lue : la pagination n'a de sens que
-  /// rapportée à une édition (D8).
-  tomeId    String?
-  tome      Tome?    @relation(fields: [tomeId], references: [id], onDelete: SetNull)
-  editionId String?
-  edition   Edition? @relation(fields: [editionId], references: [id], onDelete: SetNull)
-
-  text String
-  page Int?
-  note String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId, createdAt])
-  @@index([workId])
 }
 
 /// Portée d'un objectif annuel (L5, D12).
