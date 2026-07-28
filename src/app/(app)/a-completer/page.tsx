@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
+import { resolveCovers } from "@/lib/cover-loader";
 import { requireUser, isAdmin } from "@/lib/session";
 import { MediaFilter } from "@/components/MediaFilter";
 import { WorkGrid } from "@/components/WorkCard";
@@ -60,6 +61,9 @@ export default async function ACompleterPage({
     db.work.count({ where: { ...scope, createdById: user.id } }),
   ]);
 
+  const covers = await resolveCovers(works, user.id);
+  const items = works.map((w) => ({ ...w, coverImageId: covers.get(w.id) }));
+
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -97,7 +101,7 @@ export default async function ACompleterPage({
 
       {works.length > 0 ? (
         <>
-          <WorkGrid works={works} />
+          <WorkGrid works={items} />
           {total > works.length && (
             <Card className="text-sm text-muted">
               {total - works.length} fiche(s) supplémentaire(s) à compléter.

@@ -22,8 +22,6 @@ export type ImportedWorkRef = {
   titleFr: string;
   titleOriginal: string | null;
   year: number | null;
-  isbn: string | null;
-  pageCount: number | null;
   creators: string[];
   /** Saison concernée (Serializd). */
   seasonNumber: number | null;
@@ -184,8 +182,6 @@ export function emptyWorkRef(type: WorkType, titleFr: string): ImportedWorkRef {
     titleFr,
     titleOriginal: null,
     year: null,
-    isbn: null,
-    pageCount: null,
     creators: [],
     seasonNumber: null,
     volumeNumber: null,

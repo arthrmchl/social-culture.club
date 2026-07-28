@@ -27,6 +27,10 @@ import {
 } from "../src/lib/import/types";
 import { applyEditionCoverage } from "../src/lib/tracking";
 import { isReading } from "../src/lib/media";
+import { pageCountFor } from "../src/lib/editions";
+import { pickCoverImageId } from "../src/lib/covers";
+import { resolveCovers } from "../src/lib/cover-loader";
+import { searchWorks } from "../src/lib/search";
 import { MAX_FAVORITES } from "../src/lib/favorites";
 import { collectUserExport, entityToCsv } from "../src/lib/export/collect";
 import { CSV_ENTITIES } from "../src/lib/export/shape";
@@ -87,8 +91,9 @@ async function main() {
       type: "MANGA_SERIES",
       titleFr: "Berserk",
       titleNormalized: normalizeTitle("Berserk"),
+      originalLanguage: "ja",
       year: 1989,
-      coverImageId: img.id,
+      // Pas de visuel sur une lecture (lot 5) : ce sont ses éditions qui en ont.
       createdById: admin.id,
     },
   });
@@ -191,6 +196,9 @@ async function main() {
   // ── Lot 4 : social ───────────────────────────────────────────
   const lot4 = await verifySocial(admin.id, film.id);
 
+  // ── Lot 5 : l'œuvre et son édition ───────────────────────────
+  const lot5 = await verifyEditions(admin.id, img.id);
+
   console.log("── Résultats de vérification ─────────────────");
   console.log(`Film créé             : ${film.titleFr} (${film.year})`);
   console.log(`Anime — épisodes gén. : ${epCount} (attendu 24)`);
@@ -252,7 +260,7 @@ async function main() {
     `Favoris — plafond ${lot3.favoriteCap} respecté : ${lot3.favoriteCount} (attendu ${lot3.favoriteCap})`,
   );
   console.log(
-    `Export — version ${lot3.exportVersion}, ${lot3.exportEntities} entités CSV (attendu 3 et 18)`,
+    `Export — version ${lot3.exportVersion}, ${lot3.exportEntities} entités CSV (attendu 4 et 18)`,
   );
 
   console.log(
@@ -292,6 +300,22 @@ async function main() {
     `Modération — entrée masquée sortie du fil : ${lot4.hiddenLeftFeed} (attendu true)`,
   );
 
+  console.log(
+    `Livre sans édition    : visuel=${lot5.coverWithoutEdition}, pages=${lot5.pagesWithoutEdition} (attendu null et null)`,
+  );
+  console.log(
+    `Couverture — édition par défaut puis la mienne : ${lot5.coverDefault}/${lot5.coverMine} (attendu ${lot5.expectedDefault}/${lot5.expectedMine})`,
+  );
+  console.log(
+    `Pagination — mon édition : ${lot5.pagesMine} (attendu 380, celle du poche)`,
+  );
+  console.log(
+    `Traduction — langue et traducteur : ${lot5.language}/${lot5.translator} (attendu fr/Ludmila Savitzky)`,
+  );
+  console.log(
+    `Recherche par l'ISBN d'une édition : ${lot5.foundByIsbn} (attendu true)`,
+  );
+
   const ok =
     epCount === 24 &&
     tomeCount === 23 &&
@@ -303,10 +327,128 @@ async function main() {
     tomesState === "COMPLETED" &&
     lot2.ok &&
     lot3.ok &&
-    lot4.ok;
+    lot4.ok &&
+    lot5.ok;
   console.log(ok ? "\n✅ TOUTES LES VÉRIFICATIONS PASSENT" : "\n❌ ÉCHEC");
   await db.$disconnect();
   process.exit(ok ? 0 : 1);
+}
+
+/**
+ * Lot 5 — l'œuvre et son édition, contre la vraie base.
+ *
+ * Ce que les tests unitaires ne prouvent pas : qu'un livre est bien créable
+ * **sans** visuel, que la cascade de couverture interroge réellement les
+ * éditions et le suivi du lecteur (deux requêtes, pas une par vignette), et
+ * qu'une œuvre reste trouvable par l'ISBN d'une de ses éditions — le seul
+ * endroit où cet ISBN vive désormais.
+ */
+async function verifyEditions(userId: string, defaultImageId: string) {
+  const title = "Ulysse (vérification)";
+  await db.work.deleteMany({ where: { titleFr: title } });
+
+  const mineImage = await db.image.create({
+    data: { path: "covers/poche.webp", uploadedById: userId },
+  });
+
+  // 1. Un livre naît sans visuel : D31 ne vaut plus pour une lecture.
+  const book = await db.work.create({
+    data: {
+      type: "BOOK",
+      titleFr: title,
+      titleOriginal: "Ulysses",
+      titleNormalized: normalizeTitle(title),
+      originalLanguage: "en",
+      year: 1922,
+      createdById: userId,
+    },
+  });
+  const coverWithoutEdition = pickCoverImageId(book, [], null);
+  const pagesWithoutEdition = pageCountFor([], null);
+
+  // 2. Deux éditions : l'originale par défaut, et une traduction française.
+  const isbn = "9780199535675";
+  await db.edition.create({
+    data: {
+      workId: book.id,
+      publisher: "Oxford University Press",
+      format: "broché",
+      language: "en",
+      pageCount: 210,
+      isbn,
+      isDefault: true,
+      coverImageId: defaultImageId,
+    },
+  });
+  const person = await db.person.upsert({
+    where: { nameNormalized: normalizeTitle("Ludmila Savitzky") },
+    update: {},
+    create: {
+      name: "Ludmila Savitzky",
+      nameNormalized: normalizeTitle("Ludmila Savitzky"),
+    },
+  });
+  const poche = await db.edition.create({
+    data: {
+      workId: book.id,
+      title: "Ulysse",
+      publisher: "Gallimard",
+      format: "poche",
+      language: "fr",
+      pageCount: 380,
+      isbn: "9782070400188",
+      coverImageId: mineImage.id,
+      creators: { create: { personId: person.id, role: "traducteur" } },
+    },
+  });
+
+  // 3. La cascade, par le vrai chargeur : édition par défaut, puis la mienne.
+  const before = await resolveCovers([book], userId);
+  const coverDefault = before.get(book.id);
+
+  await db.userWork.upsert({
+    where: { userId_workId: { userId, workId: book.id } },
+    update: { editionId: poche.id },
+    create: { userId, workId: book.id, editionId: poche.id },
+  });
+  const after = await resolveCovers([book], userId);
+  const coverMine = after.get(book.id);
+
+  const editions = await db.edition.findMany({
+    where: { workId: book.id },
+    include: { creators: { include: { person: true } } },
+  });
+  const pagesMine = pageCountFor(editions, poche.id);
+  const translated = editions.find((e) => e.id === poche.id)!;
+
+  // 4. L'ISBN d'une édition retrouve son œuvre (requête réelle de searchWorks).
+  const found = await searchWorks(isbn);
+  const foundByIsbn = found.some((w) => w.id === book.id);
+
+  await db.work.delete({ where: { id: book.id } });
+  await db.image.delete({ where: { id: mineImage.id } });
+
+  return {
+    coverWithoutEdition,
+    pagesWithoutEdition,
+    coverDefault,
+    coverMine,
+    expectedDefault: defaultImageId,
+    expectedMine: mineImage.id,
+    pagesMine,
+    language: translated.language,
+    translator: translated.creators.map((c) => c.person.name).join(", "),
+    foundByIsbn,
+    ok:
+      coverWithoutEdition === null &&
+      pagesWithoutEdition === null &&
+      coverDefault === defaultImageId &&
+      coverMine === mineImage.id &&
+      pagesMine === 380 &&
+      translated.language === "fr" &&
+      translated.creators.length === 1 &&
+      foundByIsbn,
+  };
 }
 
 /**
@@ -820,7 +962,7 @@ async function verifyLibrary(userId: string, mangaId: string, filmId: string) {
       !quoteOnFilm &&
       goalDuplicateBlocked &&
       favoriteCount === MAX_FAVORITES &&
-      doc.version === 3 &&
+      doc.version === 4 &&
       doc.lists.length > 0 &&
       csvOk,
   };
@@ -982,8 +1124,6 @@ async function runImport(userId: string, files: ImportedFile[]) {
         titleFr: target.ref.titleFr,
         titleNormalized: target.titleNormalized,
         year: target.ref.year,
-        isbn: target.ref.isbn,
-        pageCount: target.ref.pageCount,
         creators: target.ref.creators,
         extra: { seasons: target.seasons, volumes: target.volumes },
         // Le rapprochement automatique doit suffire : on ne décide rien à la main.

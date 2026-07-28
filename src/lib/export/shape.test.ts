@@ -48,10 +48,10 @@ describe("isCsvEntity", () => {
 describe("contrat du document", () => {
   it("annonce son format et sa version", () => {
     expect(EXPORT_FORMAT).toBe("social-culture.club");
-    // Version 3 depuis le lot 4 : un lecteur doit pouvoir distinguer un export
-    // sans abonnements d'un export d'avant les abonnements — comme la version 2
-    // le permettait pour les listes.
-    expect(EXPORT_VERSION).toBe(3);
+    // Version 4 depuis le lot 5 : un lecteur doit pouvoir distinguer un livre
+    // sans ISBN d'un export d'avant la séparation œuvre/édition — comme la
+    // version 3 le permettait pour les abonnements, et la 2 pour les listes.
+    expect(EXPORT_VERSION).toBe(4);
   });
 
   it("nomme chaque entité exportable en français", () => {

@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { scoreToStars } from "@/lib/rating";
 import { editionLabel, omnibusLabel } from "@/lib/editions";
+import { resolveCovers } from "@/lib/cover-loader";
 import { scopeLabel } from "@/lib/goals";
 import { toCsv, type CsvColumn } from "./csv";
 import {
@@ -205,7 +206,7 @@ export async function collectUserExport(
     ),
   ]);
 
-  const works = await collectWorks([...workIds]);
+  const works = await collectWorks([...workIds], userId);
 
   return {
     format: EXPORT_FORMAT,
@@ -409,7 +410,7 @@ function socialTargetOf(row: SocialRow) {
 }
 
 /** Fiches d'œuvres, lues par pages. */
-async function collectWorks(ids: string[]) {
+async function collectWorks(ids: string[], userId: string) {
   const out: ExportedDocument["works"] = [];
 
   for (let i = 0; i < ids.length; i += PAGE) {
@@ -424,9 +425,18 @@ async function collectWorks(ids: string[]) {
           include: { _count: { select: { episodes: true } } },
         },
         tomes: { orderBy: { number: "asc" } },
-        editions: { orderBy: { createdAt: "asc" } },
+        editions: {
+          orderBy: { createdAt: "asc" },
+          include: {
+            creators: { include: { person: { select: { name: true } } } },
+          },
+        },
       },
     });
+
+    // Le visuel d'une lecture appartient à ses éditions (lot 5) : c'est celui
+    // que voit l'exportant qui part avec lui.
+    const covers = await resolveCovers(works, userId);
 
     for (const w of works) {
       out.push({
@@ -434,11 +444,10 @@ async function collectWorks(ids: string[]) {
         type: w.type,
         titleFr: w.titleFr,
         titleOriginal: w.titleOriginal,
+        originalLanguage: w.originalLanguage,
         year: w.year,
         synopsis: w.synopsis,
         durationMinutes: w.durationMinutes,
-        pageCount: w.pageCount,
-        isbn: w.isbn,
         needsCompletion: w.needsCompletion,
         genres: w.genres.map((g) => g.genre.name),
         creators: w.creators.map((c) => ({
@@ -457,6 +466,9 @@ async function collectWorks(ids: string[]) {
         })),
         editions: w.editions.map((e) => ({
           label: editionLabel(e),
+          title: e.title,
+          language: e.language,
+          translators: e.creators.map((c) => c.person.name),
           format: e.format,
           publisher: e.publisher,
           isbn: e.isbn,
@@ -465,7 +477,7 @@ async function collectWorks(ids: string[]) {
           coversTomeFrom: e.coversTomeFrom,
           coversTomeTo: e.coversTomeTo,
         })),
-        coverUrl: w.coverImageId ? `/api/uploads/${w.coverImageId}` : null,
+        coverUrl: covers.get(w.id) ? `/api/uploads/${covers.get(w.id)}` : null,
       });
     }
   }
@@ -506,8 +518,7 @@ export function entityToCsv(doc: ExportedDocument, entity: CsvEntity): string {
         col("Créateurs", (w) => w.creators.map((c) => c.name).join(" ; ")),
         col("Genres", (w) => w.genres.join(" ; ")),
         col("Durée (min)", (w) => w.durationMinutes),
-        col("Pages", (w) => w.pageCount),
-        col("ISBN", (w) => w.isbn),
+        col("Langue originale", (w) => w.originalLanguage),
         col("À compléter", (w) => w.needsCompletion),
       ]);
 
@@ -624,8 +635,11 @@ export function entityToCsv(doc: ExportedDocument, entity: CsvEntity): string {
         col("Œuvre", (r) => r.title),
         col("Identifiant œuvre", (r) => r.workId),
         col("Libellé", (r) => r.label),
+        col("Titre de l'édition", (r) => r.editionTitle),
         col("Format", (r) => r.format),
         col("Éditeur", (r) => r.publisher),
+        col("Langue", (r) => r.language),
+        col("Traducteurs", (r) => r.translators),
         col("ISBN", (r) => r.isbn),
         col("Pages", (r) => r.pageCount),
         col("Par défaut", (r) => r.isDefault),
@@ -728,6 +742,9 @@ function flattenEditions(works: ExportedDocument["works"]): FlatEditionRow[] {
       title: w.titleFr,
       workId: w.id,
       label: e.label,
+      editionTitle: e.title,
+      language: e.language,
+      translators: e.translators.join(" ; "),
       format: e.format,
       publisher: e.publisher,
       isbn: e.isbn,
@@ -849,6 +866,9 @@ type FlatEditionRow = {
   title: string;
   workId: string;
   label: string;
+  editionTitle: string | null;
+  language: string | null;
+  translators: string;
   format: string | null;
   publisher: string | null;
   isbn: string | null;

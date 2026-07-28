@@ -117,7 +117,9 @@ Lot 0 :
 
 - **D6/D29** catalogue interne partagé, aucune API externe.
 - **D30** édition d'une fiche réservée au créateur et à l'administrateur.
-- **D31** création : titre + année + visuel obligatoires.
+- **D31** création : titre + année obligatoires, et visuel pour les médias qui
+  en portent un — depuis le lot 5, celui d'un livre, d'une BD ou d'un manga
+  appartient à ses éditions.
 - **D24** inscription en cercle privé, sur invitation.
 - **D8** modèle des éditions/intégrales prêt dès le lot 0 (interface au lot 3).
 
@@ -140,7 +142,8 @@ Lot 2 :
   clé stable (`JournalEntry.importKey`, unique par utilisateur).
 - **D31** l'obligation de visuel ne vaut que pour la création manuelle : les
   fiches importées reçoivent un visuel de substitution et un badge « à
-  compléter », rassemblées dans `/a-completer`.
+  compléter », rassemblées dans `/a-completer`. Depuis le lot 5, l'import crée
+  l'œuvre seule : ni édition, ni ISBN, ni pagination.
 - **I4** export complet (JSON + un CSV par entité), lisible sans l'application.
 - **I5** scripts de sauvegarde et de restauration (base + visuels).
 - **N9** suppression de compte effective, les fiches créées restant au
@@ -167,6 +170,20 @@ Lot 3 :
   les fiches de toute l'instance.
 - **S13** accueil enrichi : progression des objectifs et listes épinglées.
 
+Lot 5a — l'œuvre et son édition :
+
+- Une **œuvre** porte le texte : titre, titre original, **langue originale**,
+  auteur·rice·s, année de première publication. Une **édition** porte l'objet
+  publié : éditeur, titre, langue, **traducteur·rice·s**, ISBN, pagination et
+  **couverture**. L'ISBN et la pagination quittent donc la fiche d'œuvre.
+- La couverture d'un livre, d'une BD ou d'un manga se résout **mon édition →
+  édition par défaut → vignette générée**, partout : fiche, catalogue,
+  bibliothèque, fil et profils publics (où c'est l'édition de *l'auteur* qui
+  illustre son étagère).
+- **D31** ne s'applique plus aux médias de lecture : un livre se crée sans
+  visuel, et ses éditions viennent ensuite.
+- L'**export** passe en **version 4** ; l'**import** crée l'œuvre seule.
+
 ## Vérification manuelle (bout en bout)
 
 Une fois la base démarrée et peuplée :
@@ -175,7 +192,9 @@ Une fois la base démarrée et peuplée :
 2. Se déconnecter, ouvrir le lien d'inscription (ou saisir le code) → créer un
    second compte. Sans code valide → refus.
 3. **Créer** une œuvre de chaque type ; visuel par **collage** (⌘V) puis par
-   **upload**. Vérifier le refus si titre / année / visuel manquant.
+   **upload**. Vérifier le refus si titre / année manquant, et le refus du
+   visuel manquant sur un film ou une série. Un **livre**, une **BD** ou un
+   **manga** se crée sans visuel : c'est son édition qui l'illustrera.
 4. Générateurs : « 1 saison de 12 épisodes », « série de 23 tomes ».
 5. Recréer un titre + année proche → la **détection de doublon** propose la fiche
    existante.
@@ -196,8 +215,12 @@ Suivi (lot 1), sur une fiche :
     noter/critiquer une **saison**.
 11. **BD/manga** : cliquer les tomes (à lire → en cours → lu) ; l'agrégat
     « X/Y tomes lus » et le statut se mettent à jour.
-12. **Livre** : mettre à jour la **page courante** (depuis la fiche ou l'accueil) ;
-    le statut passe à « en cours ».
+12. **Livre** : ajouter une **édition** (éditeur, titre, langue, traducteur,
+    ISBN, pages, couverture) — elle devient l'édition par défaut et sa
+    couverture apparaît au catalogue. En ajouter une seconde, la marquer
+    « je lis celle-ci » : la pagination et la vignette suivent. Mettre à jour la
+    **page courante** (depuis la fiche ou l'accueil) ; le statut passe à
+    « en cours ». Chercher l'**ISBN** d'une édition retrouve l'œuvre.
 13. Marquer une œuvre **« à voir »** → elle apparaît dans **`/watchlist`**.
 
 Reprise de l'historique (lot 2) :

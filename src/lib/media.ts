@@ -97,6 +97,15 @@ export function isReading(type: WorkType): boolean {
 }
 
 /**
+ * Qui porte la couverture (lot 5). Une lecture n'en a pas : ce sont ses
+ * éditions qui sont publiées, donc illustrées. L'obligation de visuel (D31)
+ * et le champ de téléversement de la fiche se règlent sur ce seul juge.
+ */
+export function worksOwnCover(type: WorkType): boolean {
+  return !isReading(type);
+}
+
+/**
  * Année d'une fiche à l'affichage. Les fiches importées (lot 2, I1) peuvent
  * arriver sans année : on l'annonce plutôt que d'afficher un trou.
  */

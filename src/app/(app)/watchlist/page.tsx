@@ -2,6 +2,7 @@ import { MediaFilter } from "@/components/MediaFilter";
 import { WorkGrid } from "@/components/WorkCard";
 import { EmptyState } from "@/components/ui/Card";
 import { db } from "@/lib/db";
+import { resolveCovers } from "@/lib/cover-loader";
 import { requireUser } from "@/lib/session";
 import { isWorkType } from "@/lib/media";
 import type { WorkType } from "@/generated/prisma/enums";
@@ -38,7 +39,14 @@ export default async function WatchlistPage({
     },
   });
 
-  const works = rows.map((r) => r.work);
+  const covers = await resolveCovers(
+    rows.map((r) => r.work),
+    user.id,
+  );
+  const works = rows.map((r) => ({
+    ...r.work,
+    coverImageId: covers.get(r.work.id),
+  }));
 
   return (
     <div className="flex flex-col gap-5">

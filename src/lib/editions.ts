@@ -6,8 +6,12 @@
  * qu'elle couvre, et lire cette édition marque ces tomes comme lus.
  */
 
+import { languageLabel } from "./languages";
+
 /** La forme minimale attendue — un sous-ensemble du modèle Prisma. */
 export type EditionLike = {
+  title?: string | null;
+  language?: string | null;
   publisher?: string | null;
   format?: string | null;
   pageCount?: number | null;
@@ -51,14 +55,17 @@ export function coveredTomeNumbers(edition: EditionLike): number[] {
 }
 
 /**
- * Libellé d'une édition — éditeur, format, pagination, puis l'ISBN en dernier
- * recours. Une édition dont rien n'est renseigné reste nommable : la création
- * n'exige que son existence (D8, D31).
+ * Libellé d'une édition — son titre s'il diffère, puis éditeur, format, langue
+ * et pagination, puis l'ISBN en dernier recours. Une édition dont rien n'est
+ * renseigné reste nommable : la création n'exige que son existence (D8).
  */
 export function editionLabel(edition: EditionLike): string {
   const parts: string[] = [];
+  if (edition.title?.trim()) parts.push(edition.title.trim());
   if (edition.publisher?.trim()) parts.push(edition.publisher.trim());
   if (edition.format?.trim()) parts.push(edition.format.trim());
+  const language = languageLabel(edition.language);
+  if (language) parts.push(language);
   if (edition.pageCount) parts.push(`${edition.pageCount} pages`);
 
   if (parts.length > 0) return parts.join(" · ");
@@ -87,13 +94,18 @@ export function pickDefaultEdition<T extends EditionLike>(
 }
 
 /**
- * Pagination de référence : celle de l'édition lue si elle est connue, sinon
- * celle de la fiche. C'est ce qui permet à une progression « page 210 sur
- * 380 » d'être juste quand on lit le poche plutôt que le broché.
+ * Pagination de référence : celle de l'édition que je lis, sinon celle de
+ * l'édition par défaut. Une œuvre n'a plus de pagination propre (lot 5) — c'est
+ * ce qui permet à « page 210 sur 380 » d'être juste quand on lit le poche
+ * plutôt que le broché, et de rester vide tant qu'aucune édition n'est décrite
+ * (le suivi retombe alors sur le pourcentage).
  */
-export function pageCountFor(
-  workPageCount: number | null | undefined,
-  edition: EditionLike | null | undefined,
+export function pageCountFor<T extends EditionLike & { id: string }>(
+  editions: T[],
+  myEditionId: string | null | undefined,
 ): number | null {
-  return edition?.pageCount ?? workPageCount ?? null;
+  const mine = myEditionId
+    ? (editions.find((e) => e.id === myEditionId) ?? null)
+    : null;
+  return (mine ?? pickDefaultEdition(editions))?.pageCount ?? null;
 }

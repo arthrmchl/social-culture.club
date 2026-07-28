@@ -24,12 +24,18 @@ describe("détection de la source", () => {
 });
 
 describe("fiche importée", () => {
-  it("reprend auteur, pagination et ISBN nettoyé", () => {
+  it("reprend l'auteur et l'identifiant de la source", () => {
     const ref = stateOf("Dune")!.work;
     expect(ref.creators).toEqual(["Frank Herbert"]);
-    expect(ref.pageCount).toBe(896);
-    expect(ref.isbn).toBe("9780441013593");
     expect(ref.externalId).toBe("goodreads:12345");
+  });
+
+  it("ne reprend aucun détail d'édition dans la fiche", () => {
+    // ISBN et pagination décrivent l'objet publié (lot 5) : l'import crée
+    // l'œuvre seule, à charge de l'utilisateur de décrire son édition.
+    const ref = stateOf("Dune")!.work;
+    expect(Object.keys(ref)).not.toContain("isbn");
+    expect(Object.keys(ref)).not.toContain("pageCount");
   });
 
   it("privilégie l'année de publication originale", () => {
@@ -139,8 +145,26 @@ describe("literal.club via les mêmes alias", () => {
     expect(s.finishedAt?.toISOString()).toContain("2026-04-20");
   });
 
-  it("reprend l'ISBN sans préfixe tableur", () => {
-    expect(state("Le Nom du vent")!.work.isbn).toBe("9782352944430");
+  it("garde une graine stable pour chaque ouvrage", () => {
+    // L'identifiant du service prime ; c'est lui qui rend un ré-import
+    // idempotent (I6), quoi que devienne la fiche.
+    expect(state("Le Nom du vent")!.seed).toBe("goodreads:abc123|state");
+  });
+});
+
+describe("graine d'idempotence sans identifiant", () => {
+  it("retombe sur l'ISBN nettoyé plutôt que sur le titre", () => {
+    const r = goodreadsAdapter.parse(
+      [
+        {
+          name: "sans-id.csv",
+          content:
+            'Title,Author,ISBN13,Exclusive Shelf,Date Read\nDune,Frank Herbert,="9780441013593",read,2026-01-05\n',
+        },
+      ],
+      DEFAULT_IMPORT_OPTIONS,
+    );
+    expect(r.events.map((e) => e.seed)).toContain("9780441013593|state");
   });
 });
 

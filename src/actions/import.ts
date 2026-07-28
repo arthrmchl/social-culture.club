@@ -139,8 +139,6 @@ export async function analyzeImportBatch(
             titleOriginal: target.ref.titleOriginal,
             titleNormalized: target.titleNormalized,
             year: target.ref.year,
-            isbn: target.ref.isbn,
-            pageCount: target.ref.pageCount,
             creators: target.ref.creators,
             extra: { seasons: target.seasons, volumes: target.volumes },
             candidates,

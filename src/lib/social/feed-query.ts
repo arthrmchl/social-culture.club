@@ -1,6 +1,7 @@
 import "server-only";
 
 import { db } from "@/lib/db";
+import { resolveCovers } from "@/lib/cover-loader";
 import {
   buildFeedPage,
   decodeCursor,
@@ -279,14 +280,40 @@ export async function getFeed(
     authors.set(row.user.id, row.user);
   }
 
+  // Chaque élément est illustré par l'édition que lit **son auteur** (lot 5) :
+  // le regard varie d'une ligne à l'autre, la résolution reste groupée.
+  const covers = await resolveCovers([
+    ...entries.map((e) => ({ ...e.work, viewerId: e.userId })),
+    ...reviews.map((r) => ({ ...r.work, viewerId: r.userId })),
+    ...lists.flatMap((l) =>
+      l.items.map((i) => ({ ...i.work, viewerId: l.userId })),
+    ),
+  ]);
+  const cover = <T extends { id: string }>(work: T, authorId: string): T => ({
+    ...work,
+    coverImageId: covers.get(work.id, authorId),
+  });
+
   return {
     items: page.items,
     nextCursor: page.nextCursor,
     payload: {
       authors,
-      entries: new Map(entries.map((e) => [e.id, e])),
-      reviews: new Map(reviews.map((r) => [r.id, r])),
-      lists: new Map(lists.map((l) => [l.id, l])),
+      entries: new Map(
+        entries.map((e) => [e.id, { ...e, work: cover(e.work, e.userId) }]),
+      ),
+      reviews: new Map(
+        reviews.map((r) => [r.id, { ...r, work: cover(r.work, r.userId) }]),
+      ),
+      lists: new Map(
+        lists.map((l) => [
+          l.id,
+          {
+            ...l,
+            items: l.items.map((i) => ({ ...i, work: cover(i.work, l.userId) })),
+          },
+        ]),
+      ),
     },
   };
 }

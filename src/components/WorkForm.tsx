@@ -4,7 +4,8 @@ import { useActionState, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { detectDuplicates, type WorkFormState } from "@/actions/work";
 import type { DuplicateCandidate } from "@/lib/search";
-import { MEDIA, MEDIA_ORDER, formatYear } from "@/lib/media";
+import { MEDIA, MEDIA_ORDER, formatYear, worksOwnCover } from "@/lib/media";
+import { LANGUAGES } from "@/lib/languages";
 import type { WorkType } from "@/generated/prisma/enums";
 import { Card } from "@/components/ui/Card";
 import { Input, Textarea, Label, FieldHint } from "@/components/ui/Field";
@@ -16,11 +17,10 @@ export type WorkFormInitial = {
   type: WorkType;
   titleFr?: string;
   titleOriginal?: string;
+  originalLanguage?: string;
   year?: number;
   synopsis?: string;
   durationMinutes?: number;
-  pageCount?: number;
-  isbn?: string;
   format?: string;
   genres?: string;
   creators?: string;
@@ -73,6 +73,7 @@ export function WorkForm({
   const showTomes = media.subUnit === "tomes";
   const isFilm = type === "FILM";
   const isBook = type === "BOOK";
+  const ownsCover = worksOwnCover(type);
 
   return (
     <form action={formAction} className="flex flex-col gap-6">
@@ -107,12 +108,19 @@ export function WorkForm({
       )}
 
       <div className="flex flex-col gap-6 sm:flex-row">
-        <CoverUpload
-          name="coverImageId"
-          defaultImageId={initial.coverImageId}
-          label="Visuel"
-          required
-        />
+        {ownsCover ? (
+          <CoverUpload
+            name="coverImageId"
+            defaultImageId={initial.coverImageId}
+            label="Visuel"
+            required
+          />
+        ) : (
+          <Card className="w-full max-w-[12rem] shrink-0 p-4 text-sm text-muted">
+            Le visuel appartient à l&apos;édition : ajoutez-en une depuis la
+            fiche, avec sa couverture.
+          </Card>
+        )}
 
         <div className="flex flex-1 flex-col gap-4">
           <div>
@@ -134,7 +142,26 @@ export function WorkForm({
             />
           </div>
           <div>
-            <Label htmlFor="year">Année</Label>
+            <Label htmlFor="originalLanguage">Langue originale</Label>
+            <Input
+              id="originalLanguage"
+              name="originalLanguage"
+              list="language-options"
+              defaultValue={initial.originalLanguage}
+              placeholder="fr, en, ja…"
+            />
+            <datalist id="language-options">
+              {LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code}>
+                  {l.label}
+                </option>
+              ))}
+            </datalist>
+          </div>
+          <div>
+            <Label htmlFor="year">
+              {isBook ? "Année de première publication" : "Année"}
+            </Label>
             <Input
               id="year"
               name="year"
@@ -199,24 +226,6 @@ export function WorkForm({
         </div>
       )}
 
-      {isBook && (
-        <div className="flex flex-wrap gap-4">
-          <div className="max-w-xs">
-            <Label htmlFor="pageCount">Pages</Label>
-            <Input
-              id="pageCount"
-              name="pageCount"
-              type="number"
-              defaultValue={initial.pageCount}
-            />
-          </div>
-          <div className="max-w-xs">
-            <Label htmlFor="isbn">ISBN</Label>
-            <Input id="isbn" name="isbn" defaultValue={initial.isbn} />
-          </div>
-        </div>
-      )}
-
       <div>
         <Label htmlFor="genres">Genres</Label>
         <Input
@@ -234,12 +243,18 @@ export function WorkForm({
       </div>
 
       <div>
-        <Label htmlFor="creators">Créateurs</Label>
+        <Label htmlFor="creators">
+          {isBook ? "Auteur·rice(s)" : "Créateurs"}
+        </Label>
         <Input
           id="creators"
           name="creators"
           defaultValue={initial.creators}
-          placeholder="Réalisateur, autrice, dessinateur… (virgules)"
+          placeholder={
+            isBook
+              ? "Autrice, auteur… (virgules)"
+              : "Réalisateur, autrice, dessinateur… (virgules)"
+          }
         />
       </div>
 

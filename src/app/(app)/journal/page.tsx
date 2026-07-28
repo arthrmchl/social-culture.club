@@ -5,6 +5,7 @@ import {
 } from "@/components/JournalEntryCard";
 import { EmptyState } from "@/components/ui/Card";
 import { db } from "@/lib/db";
+import { resolveCovers } from "@/lib/cover-loader";
 import { requireUser } from "@/lib/session";
 import { isWorkType } from "@/lib/media";
 import type { WorkType } from "@/generated/prisma/enums";
@@ -39,6 +40,11 @@ export default async function JournalPage({
     },
   });
 
+  const covers = await resolveCovers(
+    entries.map((e) => e.work),
+    user.id,
+  );
+
   const data: JournalEntryCardData[] = entries.map((e) => ({
     id: e.id,
     loggedAt: e.loggedAt,
@@ -52,7 +58,7 @@ export default async function JournalPage({
     season: e.season,
     episode: e.episode,
     tome: e.tome,
-    work: e.work,
+    work: { ...e.work, coverImageId: covers.get(e.work.id) },
   }));
 
   return (

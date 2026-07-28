@@ -22,3 +22,19 @@ export function normalizeTitle(input: string): string {
 export function slugify(input: string): string {
   return normalizeTitle(input).replace(/\s+/g, "-");
 }
+
+/**
+ * Une saisie séparée par des virgules — genres, créateurs, traducteurs — en
+ * liste, sans doublon ni entrée vide.
+ */
+export function splitList(raw?: string | null): string[] {
+  if (!raw) return [];
+  return [
+    ...new Set(
+      raw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
+  ];
+}

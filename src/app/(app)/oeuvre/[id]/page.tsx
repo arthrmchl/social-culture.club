@@ -28,10 +28,15 @@ import { FavoriteButton } from "@/components/FavoriteButton";
 import { TagInput } from "@/components/tags/TagInput";
 import { TagPills } from "@/components/tags/TagPills";
 import { QuoteSection, type QuoteData } from "@/components/quotes/QuoteSection";
-import { EditionSection } from "@/components/editions/EditionSection";
+import {
+  EditionSection,
+  type EditionData,
+} from "@/components/editions/EditionSection";
 import { CorrectionDialog } from "@/components/social/CorrectionDialog";
 import { CorrectionQueue } from "@/components/social/CorrectionQueue";
 import { pageCountFor } from "@/lib/editions";
+import { pickCoverImageId } from "@/lib/covers";
+import { languageLabel } from "@/lib/languages";
 import {
   JournalEntryCard,
   type JournalEntryCardData,
@@ -63,7 +68,12 @@ export default async function OeuvrePage({
         include: { episodes: { orderBy: { number: "asc" } } },
       },
       tomes: { orderBy: { number: "asc" } },
-      editions: { orderBy: { createdAt: "asc" } },
+      editions: {
+        orderBy: { createdAt: "asc" },
+        include: {
+          creators: { include: { person: { select: { name: true } } } },
+        },
+      },
       createdBy: { select: { name: true } },
     },
   });
@@ -158,7 +168,14 @@ export default async function OeuvrePage({
         },
       })
     : [];
-  const cover = work.coverImageId ? `/api/uploads/${work.coverImageId}` : null;
+  // La couverture d'une lecture appartient à ses éditions (lot 5) : mon
+  // édition d'abord, celle par défaut ensuite, la vignette générée sinon.
+  const coverImageId = pickCoverImageId(
+    work,
+    work.editions,
+    userWork?.editionId,
+  );
+  const cover = coverImageId ? `/api/uploads/${coverImageId}` : null;
   const totalEpisodes = work.seasons.reduce((n, s) => n + s.episodes.length, 0);
 
   const watchedSet = new Set(watches.map((w) => w.episodeId));
@@ -206,13 +223,17 @@ export default async function OeuvrePage({
       id: work.id,
       type: work.type,
       titleFr: work.titleFr,
-      coverImageId: work.coverImageId,
+      coverImageId,
     },
   }));
 
   const viewingCount = entries.length;
-  const myEdition =
-    work.editions.find((e) => e.id === userWork?.editionId) ?? null;
+  const editionItems: EditionData[] = work.editions.map((e) => ({
+    ...e,
+    translators: e.creators.map((c) => c.person.name),
+  }));
+  const readingPageCount = pageCountFor(work.editions, userWork?.editionId);
+  const originalLanguage = languageLabel(work.originalLanguage);
   const tags = workTags.map((wt) => wt.tag);
   const quoteItems: QuoteData[] = quotes.map((q) => ({
     id: q.id,
@@ -230,8 +251,9 @@ export default async function OeuvrePage({
           <div>
             <p className="text-sm font-medium">Fiche à compléter</p>
             <p className="text-sm text-muted">
-              Importée depuis un service externe : il lui manque au moins un
-              visuel.
+              Importée depuis un service externe : il lui manque au moins une
+              information — son année, et son visuel pour les médias qui en
+              portent un.
             </p>
           </div>
           {canEdit && (
@@ -270,12 +292,15 @@ export default async function OeuvrePage({
           <p className="mt-1 text-sm text-muted">
             {formatYear(work.year)}
             {work.durationMinutes ? ` · ${work.durationMinutes} min` : ""}
-            {work.pageCount ? ` · ${work.pageCount} pages` : ""}
+            {readingPageCount ? ` · ${readingPageCount} pages` : ""}
+            {originalLanguage ? ` · ${originalLanguage}` : ""}
           </p>
 
           {work.creators.length > 0 && (
             <p className="mt-3 text-sm">
-              <span className="text-muted">Créateurs : </span>
+              <span className="text-muted">
+                {work.type === "BOOK" ? "Auteur·rice(s) : " : "Créateurs : "}
+              </span>
               {work.creators.map((c) => c.person.name).join(", ")}
             </p>
           )}
@@ -379,7 +404,7 @@ export default async function OeuvrePage({
           <SectionTitle>Éditions</SectionTitle>
           <EditionSection
             workId={work.id}
-            editions={work.editions}
+            editions={editionItems}
             myEditionId={userWork?.editionId ?? null}
             canEdit={canEdit}
             hasTomes={work.tomes.length > 0}
@@ -457,7 +482,7 @@ export default async function OeuvrePage({
               currentPage={userWork?.currentPage ?? null}
               currentPercent={userWork?.progressPercent ?? null}
               // La pagination suit l'édition lue quand elle est précisée (D8).
-              pageCount={pageCountFor(work.pageCount, myEdition)}
+              pageCount={readingPageCount}
             />
           </Card>
         </section>

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { db } from "@/lib/db";
+import { resolveCovers } from "@/lib/cover-loader";
 import type { WorkType } from "@/generated/prisma/enums";
 import { blockedUserIds } from "./access";
 
@@ -108,7 +109,12 @@ export async function getDiscoverData(viewerId: string): Promise<DiscoverData> {
         },
       })
     : [];
-  const byId = new Map(works.map((w) => [w.id, w]));
+  // « Ce qui se voit en ce moment » n'appartient à personne : la couverture
+  // affichée est celle de l'édition par défaut (lot 5).
+  const covers = await resolveCovers(works);
+  const byId = new Map(
+    works.map((w) => [w.id, { ...w, coverImageId: covers.get(w.id) }]),
+  );
 
   const hydrate = (rows: { workId: string; _count: { workId: number } }[]) =>
     rows.flatMap((r) => {

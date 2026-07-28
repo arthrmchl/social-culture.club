@@ -91,8 +91,6 @@ function consolidate(
     titleFr: next.titleFr.length < base.titleFr.length ? next.titleFr : base.titleFr,
     titleOriginal: base.titleOriginal ?? next.titleOriginal,
     year: base.year ?? next.year,
-    isbn: base.isbn ?? next.isbn,
-    pageCount: base.pageCount ?? next.pageCount,
     creators: [...new Set([...base.creators, ...next.creators])],
     // Les sous-unités sont propres à chaque événement : elles vivent dans
     // MergedTarget.seasons / .volumes, pas dans la référence consolidée.

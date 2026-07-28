@@ -29,7 +29,6 @@ function candidate(
     titleFr: titleNormalized,
     titleNormalized,
     year: null,
-    isbn: null,
     coverImageId: null,
     creators: [],
     sim,
@@ -46,15 +45,6 @@ describe("yearTolerance", () => {
 });
 
 describe("scoreMatch", () => {
-  it("donne le score maximal à un ISBN identique", () => {
-    const r = ref("Peu importe", "BOOK", { isbn: "9782070612888" });
-    const c = candidate("tout autre titre", 0.1, {
-      type: "BOOK",
-      isbn: "9782070612888",
-    });
-    expect(scoreMatch(r, c)).toBe(1);
-  });
-
   it("récompense un titre identique et une année proche", () => {
     const r = ref("Dune", "FILM", { year: 2021 });
     const c = candidate("dune", 1, { year: 2021 });
@@ -148,8 +138,8 @@ describe("decideResolution", () => {
 
   it("demande à l'utilisateur quand deux candidats se valent", () => {
     const d = decideResolution(ref("Dune", "FILM", { year: 2021 }), [
-      candidate("dune", 1, { year: 2021, isbn: null }),
-      candidate("dune", 1, { year: 2021, isbn: null }),
+      candidate("dune", 1, { year: 2021 }),
+      candidate("dune", 1, { year: 2021 }),
     ]);
     expect(d.resolution).toBe("LINK");
     expect(d.auto).toBe(false);

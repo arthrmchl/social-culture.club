@@ -76,8 +76,9 @@ test("générateur de tomes pour un manga", async () => {
   await page.getByRole("button", { name: /Manga/ }).click();
   await page.fill("#titleFr", MANGA_TITLE);
   await page.fill("#year", "1989");
-  await page.setInputFiles('input[type="file"]', COVER);
-  await expect(page.locator('img[alt="Aperçu du visuel"]')).toBeVisible();
+  // Pas de visuel à téléverser : celui d'un manga appartient à ses éditions
+  // (lot 5), et le champ n'est donc pas rendu pour une lecture.
+  await expect(page.locator('input[type="file"]')).toHaveCount(0);
   await page.fill("#tomesCount", "5");
   await page.getByRole("button", { name: "Créer la fiche" }).click();
 

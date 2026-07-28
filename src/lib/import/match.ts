@@ -18,7 +18,6 @@ export type ImportCandidate = {
   titleFr: string;
   titleNormalized: string;
   year: number | null;
-  isbn: string | null;
   coverImageId: string | null;
   creators: string[];
   sim: number;
@@ -59,9 +58,6 @@ export function scoreMatch(
   ref: ImportedWorkRef,
   candidate: ImportCandidate,
 ): number {
-  // Un ISBN identique ne laisse aucun doute : c'est le même ouvrage.
-  if (ref.isbn && candidate.isbn && ref.isbn === candidate.isbn) return 1;
-
   const title = titleScore(ref, candidate);
   const year = yearScore(ref, candidate);
   const type = typeScore(ref.type, candidate.type);

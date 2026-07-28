@@ -43,10 +43,25 @@ modules `server-only`, qui lèvent une erreur sans cette condition.
   suppression manuelle des enfants.
 - **Notation** : échelle d'affichage 0,5–5 étoiles par demi-point, **stockée sur
   10** en base. Convertir uniquement à l'affichage/saisie via `src/lib/rating.ts`.
+- **L'œuvre et son édition** (lot 5) : une **œuvre** est le texte — titre, titre
+  original, langue originale (`originalLanguage`, code ISO 639-1 via
+  `src/lib/languages.ts`), auteur·rice·s, année de première publication. Une
+  **édition** est l'objet publié — éditeur, titre, langue, traducteur·rice·s
+  (`EditionCreator`, rôle « traducteur »), ISBN, pagination, couverture. Un ISBN
+  sur une œuvre n'a pas de sens : c'est l'édition qui est publiée.
+- **La couverture d'une lecture appartient à ses éditions** : pour `BOOK`,
+  `BD_SERIES` et `MANGA_SERIES`, le visuel affiché se résout **mon édition →
+  édition par défaut → vignette générée** (`pickCoverImageId`, `src/lib/covers.ts`).
+  Une liste ne fait jamais une requête par vignette : `resolveCovers`
+  (`src/lib/cover-loader.ts`, `server-only`) en fait **deux au total**, et prend
+  le « regard » du propriétaire de l'écran — moi sur mes pages, l'auteur de
+  l'élément dans le fil et sur un profil. D31 (visuel obligatoire) ne vaut donc
+  plus que pour les médias non-lecture, et `worksOwnCover` en est le seul juge.
 - **Pas de type « one-shot »** : un manga en un volume est un `MANGA_SERIES` à
   un tome, suivi au tome comme les autres. Un type dédié aurait suivi la page
   (`usesPages`) alors que tout le reste du manga suit le tome (`usesTomes`).
-  `usesPages` ne vaut donc que pour `BOOK`.
+  `usesPages` ne vaut donc que pour `BOOK`, et la pagination vient de l'édition
+  lue (`pageCountFor`) — une œuvre n'en a pas.
 - **Logique pure et testée** dans `src/lib/` (`rating`, `status`, `progress`,
   `text`, `generators`) avec un `*.test.ts` voisin. `tracking.ts`, `search.ts`,
   `session.ts` sont `server-only`.
@@ -90,10 +105,15 @@ modules `server-only`, qui lèvent une erreur sans cette condition.
   et compagnie) une fois par cible, jamais par ligne.
 - **L'import n'écrase rien** : une note, une critique ou un statut déjà saisis
   sont conservés et le conflit est signalé dans le rapport.
+- **L'import crée l'œuvre seule** (lot 5) : ni édition, ni ISBN, ni pagination —
+  décrire l'objet publié revient au membre. L'ISBN d'un export reste néanmoins
+  lu par l'adaptateur Goodreads comme **graine d'idempotence** à défaut
+  d'identifiant de service (`seedBase`) : le retirer changerait les `importKey`
+  déjà écrites.
 - **Fiches importées** : `coverImageId = null` + `needsCompletion = true` ; le
   visuel de substitution est calculé à l'affichage (`src/lib/placeholder.ts`),
   jamais stocké. L'obligation de visuel (D31) ne vaut que pour la création
-  manuelle.
+  manuelle d'un média non-lecture.
 - **Téléversement** par Route Handler (`/api/import/upload`) et non par server
   action : la limite de corps de 1 Mo ne convient pas à un export complet.
 - **Export** (`src/lib/export/`) : les sous-unités sont désignées par leur
@@ -205,8 +225,9 @@ modules `server-only`, qui lèvent une erreur sans cette condition.
 ## Lotissement
 
 Lots 0 (fondations), 1 (suivi), 2 (reprise de l'historique), 3 (bibliothèque
-riche) et 4 (social) sont livrés. À venir : statistiques, rétrospective
-annuelle et PWA (lot 5).
+riche) et 4 (social) sont livrés, ainsi que la séparation de l'œuvre et de son
+édition (lot 5a, migration `lot5_oeuvre_edition`, export version 4). À venir :
+statistiques, rétrospective annuelle et PWA.
 
 Les listes des exports Letterboxd sont désormais **importées** (événements
 `LIST_ITEM`), et les étiquettes du diary rejoignent `JournalEntryTag` au lieu

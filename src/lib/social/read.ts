@@ -1,6 +1,7 @@
 import "server-only";
 
 import { db } from "@/lib/db";
+import { resolveCovers } from "@/lib/cover-loader";
 import { canSeeContent } from "@/lib/visibility";
 import {
   targetHref,
@@ -48,6 +49,19 @@ export type PublicWork = {
   year: number | null;
   coverImageId: string | null;
 };
+
+/**
+ * Les couvertures d'un lot d'œuvres vues **du point de vue de l'auteur** : sur
+ * son profil comme dans le fil, c'est l'édition qu'*il* lit qui illustre son
+ * étagère, pas celle du visiteur (lot 5).
+ */
+async function authorCovers(works: PublicWork[], authorId: string) {
+  const covers = await resolveCovers(works, authorId);
+  return <T extends PublicWork>(work: T): T => ({
+    ...work,
+    coverImageId: covers.get(work.id),
+  });
+}
 
 export type ProfileViewData = {
   access: AccessTo;
@@ -122,9 +136,14 @@ export async function getProfileView(
         : Promise.resolve(null),
     ]);
 
+  const cover = await authorCovers(
+    favorites.map((f) => f.work),
+    authorId,
+  );
+
   return {
     access: acc,
-    favorites: favorites.map((f) => f.work),
+    favorites: favorites.map((f) => cover(f.work)),
     counts: { works, entries, lists },
     pinnedLists: pinned.map((l) => ({
       id: l.id,
@@ -207,7 +226,15 @@ export async function getPublicJournal(
     select: ENTRY_SELECT,
   });
 
-  return { author: acc, entries: rows };
+  const cover = await authorCovers(
+    rows.map((r) => r.work),
+    acc.author.id,
+  );
+
+  return {
+    author: acc,
+    entries: rows.map((r) => ({ ...r, work: cover(r.work) })),
+  };
 }
 
 /** Le permalien d'une entrée (P3) — la cible d'un j'aime ou d'un commentaire. */
@@ -229,7 +256,9 @@ export async function getPublicEntry(
   const owner = isOwnerOrAdmin(acc.viewer, acc.author.id);
   if (!canSeeContent(acc.access, { hiddenAt: row.hiddenAt }, owner)) return null;
 
-  return { author: acc, entry: row };
+  const cover = await authorCovers([row.work], acc.author.id);
+
+  return { author: acc, entry: { ...row, work: cover(row.work) } };
 }
 
 export type PublicReview = {
@@ -300,7 +329,15 @@ export async function getPublicReviews(
     select: REVIEW_SELECT,
   });
 
-  return { author: acc, reviews: rows.map(toReview) };
+  const cover = await authorCovers(
+    rows.map((r) => r.work),
+    acc.author.id,
+  );
+
+  return {
+    author: acc,
+    reviews: rows.map((r) => toReview({ ...r, work: cover(r.work) })),
+  };
 }
 
 /** Le permalien d'une critique, désignée par son œuvre (P3). */
@@ -320,7 +357,9 @@ export async function getPublicReview(
   const owner = isOwnerOrAdmin(acc.viewer, acc.author.id);
   if (!canSeeContent(acc.access, { hiddenAt: row.hiddenAt }, owner)) return null;
 
-  return { author: acc, review: toReview(row) };
+  const cover = await authorCovers([row.work], acc.author.id);
+
+  return { author: acc, review: toReview({ ...row, work: cover(row.work) }) };
 }
 
 export type PublicListCard = {
@@ -372,6 +411,11 @@ export async function getPublicLists(
     },
   });
 
+  const cover = await authorCovers(
+    rows.flatMap((l) => l.items.map((i) => i.work)),
+    acc.author.id,
+  );
+
   return {
     author: acc,
     lists: rows.map((l) => ({
@@ -385,7 +429,7 @@ export async function getPublicLists(
       hiddenAt: l.hiddenAt,
       coverImageId: l.coverImageId,
       items: l._count.items,
-      covers: l.items.map((i) => i.work),
+      covers: l.items.map((i) => cover(i.work)),
     })),
   };
 }
@@ -440,6 +484,12 @@ export async function getPublicList(
     return null;
   }
 
+  const cover = await authorCovers(
+    row.items.map((i) => i.work),
+    acc.author.id,
+  );
+  const entries = row.items.map((i) => ({ ...i, work: cover(i.work) }));
+
   return {
     author: acc,
     list: {
@@ -453,8 +503,8 @@ export async function getPublicList(
       hiddenAt: row.hiddenAt,
       coverImageId: row.coverImageId,
       items: row._count.items,
-      covers: row.items.slice(0, 4).map((i) => i.work),
-      entries: row.items,
+      covers: entries.slice(0, 4).map((i) => i.work),
+      entries,
     },
   };
 }

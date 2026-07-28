@@ -39,8 +39,10 @@ const COLUMNS = {
   title: ["Title", "title"],
   author: ["Author", "author", "Primary Author"],
   additionalAuthors: ["Additional Authors", "authors"],
+  // L'ISBN décrit une édition, pas une œuvre (lot 5) : il n'est plus repris
+  // dans la fiche, mais reste la graine d'idempotence la plus sûre après
+  // l'identifiant du service (I6).
   isbn: ["ISBN13", "ISBN", "isbn13", "isbn"],
-  pageCount: ["Number of Pages", "pageCount", "pages"],
   yearOriginal: ["Original Publication Year", "originalPublicationYear"],
   yearPublished: ["Year Published", "publishedDate", "publishedYear"],
   rating: ["My Rating", "rating"],
@@ -52,7 +54,6 @@ const COLUMNS = {
   review: ["My Review", "review", "notes"],
   spoiler: ["Spoiler", "hasSpoilers"], // à valider : absent des exports anciens
   readCount: ["Read Count", "readCount"],
-  publisher: ["Publisher", "publisher"],
 } as const;
 
 /** Échelle de notation des deux services : entiers de 0 à 5. */
@@ -141,7 +142,10 @@ function eventsForBook(
   if (!rawTitle) return [];
 
   const ref = bookRef(rec, map, rawTitle, options);
-  const seedBase = ref.externalId ?? ref.isbn ?? ref.titleFr;
+  // L'ISBN ne suit plus l'œuvre, mais il reste la meilleure graine à défaut
+  // d'identifiant : deux lignes du même ouvrage doivent donner la même clé.
+  const seedBase =
+    ref.externalId ?? cleanIsbn(cell(rec, map, "isbn")) ?? ref.titleFr;
 
   const state = inferReadingState(cell(rec, map, "shelf"));
   const rating = parseIntegerRating(cell(rec, map, "rating"), RATING_SCALE);
@@ -212,8 +216,6 @@ function bookRef(
   const id = cell(rec, map, "id");
   ref.externalId = id ? `goodreads:${id}` : null;
   ref.volumeNumber = detected.volume;
-  ref.isbn = cleanIsbn(cell(rec, map, "isbn"));
-  ref.pageCount = parseCount(cell(rec, map, "pageCount"));
   ref.year =
     parseYear(cell(rec, map, "yearOriginal")) ??
     parseYear(cell(rec, map, "yearPublished"));

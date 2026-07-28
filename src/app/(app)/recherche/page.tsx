@@ -5,6 +5,8 @@ import { WorkGrid } from "@/components/WorkCard";
 import { EmptyState } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { searchWorks } from "@/lib/search";
+import { resolveCovers } from "@/lib/cover-loader";
+import { requireUser } from "@/lib/session";
 import { isWorkType } from "@/lib/media";
 import type { WorkType } from "@/generated/prisma/enums";
 
@@ -17,7 +19,10 @@ export default async function RecherchePage({
   const workType: WorkType | undefined =
     type && isWorkType(type) ? type : undefined;
 
+  const user = await requireUser();
   const results = q ? await searchWorks(q, workType) : [];
+  const covers = await resolveCovers(results, user.id);
+  const works = results.map((w) => ({ ...w, coverImageId: covers.get(w.id) }));
   const createHref = `/creer?${new URLSearchParams({
     ...(q ? { title: q } : {}),
     ...(workType ? { type: workType } : {}),
@@ -36,7 +41,7 @@ export default async function RecherchePage({
       {q ? (
         results.length > 0 ? (
           <>
-            <WorkGrid works={results} />
+            <WorkGrid works={works} />
             <div className="pt-2 text-center text-sm text-muted">
               L'œuvre n'est pas là ?{" "}
               <Link href={createHref} className="text-accent hover:underline">

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
+import { resolveCovers } from "@/lib/cover-loader";
 import { requireUser } from "@/lib/session";
 import { describeList } from "@/lib/lists";
 import { Card } from "@/components/ui/Card";
@@ -36,6 +37,7 @@ export default async function ListePage({
           note: true,
           work: {
             select: {
+              id: true,
               titleFr: true,
               type: true,
               year: true,
@@ -48,13 +50,18 @@ export default async function ListePage({
   });
   if (!list) notFound();
 
+  const covers = await resolveCovers(
+    list.items.map((i) => i.work),
+    user.id,
+  );
+
   const items: ListItemRowData[] = list.items.map((i) => ({
     workId: i.workId,
     note: i.note,
     title: i.work.titleFr,
     type: i.work.type,
     year: i.work.year,
-    coverImageId: i.work.coverImageId,
+    coverImageId: covers.get(i.work.id),
   }));
 
   const cover = list.coverImageId ? `/api/uploads/${list.coverImageId}` : null;
