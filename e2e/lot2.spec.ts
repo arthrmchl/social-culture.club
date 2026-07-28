@@ -23,7 +23,7 @@ test.beforeAll(async ({ browser }) => {
   await page.fill("#email", ADMIN.email);
   await page.fill("#password", ADMIN.password);
   await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page).toHaveURL("http://localhost:3000/");
+  await expect(page).toHaveURL("/");
 });
 test.afterAll(async () => {
   await ctx.close();

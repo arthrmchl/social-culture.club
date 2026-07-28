@@ -10,6 +10,10 @@ const eslintConfig = defineConfig([
     // Default ignores of eslint-config-next:
     ".next/**",
     "out/**",
+    // Build du serveur lancé par Playwright (next.config.ts, `distDir`) et
+    // fichiers jetables du harnais de test.
+    ".next-test/**",
+    ".test-tmp/**",
     "build/**",
     "next-env.d.ts",
     // Client Prisma généré.

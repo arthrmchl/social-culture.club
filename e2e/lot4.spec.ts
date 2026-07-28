@@ -31,7 +31,7 @@ async function login(page: Page, who: { email: string; password: string }) {
   await page.fill("#email", who.email);
   await page.fill("#password", who.password);
   await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page).toHaveURL("http://localhost:3000/");
+  await expect(page).toHaveURL("/");
 }
 
 test.beforeAll(async ({ browser }) => {
@@ -55,7 +55,7 @@ test.afterAll(async () => {
 test("le profil public de l'administrateur s'ouvre depuis son profil", async () => {
   await admin.goto("/profil");
   await admin.getByRole("link", { name: /Mon profil public/ }).click();
-  await expect(admin).toHaveURL("http://localhost:3000/u/admin");
+  await expect(admin).toHaveURL("/u/admin");
   await expect(admin.getByRole("heading", { name: "Administrateur" })).toBeVisible();
 });
 
@@ -72,7 +72,7 @@ test("un membre connecté atteint le profil sans être renvoyé à l'accueil", a
   // Le correctif de proxy.ts : la règle « connecté + préfixe public → / »
   // valait pour /connexion, elle renvoyait aussi les liens de profil.
   await membre.goto("/u/admin");
-  await expect(membre).toHaveURL("http://localhost:3000/u/admin");
+  await expect(membre).toHaveURL("/u/admin");
   await expect(membre.getByRole("heading", { name: "Administrateur" })).toBeVisible();
 });
 

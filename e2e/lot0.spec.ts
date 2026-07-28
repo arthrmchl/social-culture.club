@@ -31,7 +31,7 @@ test("inscription sur invitation puis accueil", async () => {
   await page.fill("#password", USER.password);
   await page.getByRole("button", { name: "S'inscrire" }).click();
 
-  await expect(page).toHaveURL("http://localhost:3000/");
+  await expect(page).toHaveURL("/");
   await expect(page.getByRole("heading", { name: new RegExp(USER.name) })).toBeVisible();
 });
 

@@ -22,7 +22,7 @@ test.beforeAll(async ({ browser }) => {
   await page.fill("#email", ADMIN.email);
   await page.fill("#password", ADMIN.password);
   await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page).toHaveURL("http://localhost:3000/");
+  await expect(page).toHaveURL("/");
 });
 
 test.afterAll(async () => {
@@ -38,9 +38,10 @@ async function openFirstWork(): Promise<void> {
 
 test("crée une liste, y range une œuvre et l'épingle", async () => {
   await page.goto("/listes");
-  await page
-    .getByRole("link", { name: /Nouvelle liste|première liste/ })
-    .click();
+  // Sur une bibliothèque sans aucune liste, l'écran affiche **deux** liens vers
+  // /listes/nouvelle : celui de l'en-tête et l'appel à l'action du vide. Viser
+  // la destination plutôt que le libellé, qui dépend de l'état de la page.
+  await page.locator('a[href="/listes/nouvelle"]').first().click();
 
   await page.fill("#title", LIST);
   await page.fill("#description", "Ce qui compte vraiment.");
@@ -188,11 +189,16 @@ test("la bibliothèque filtre mes œuvres et reste plus étroite que le catalogu
   await page.getByRole("link", { name: "☰ Liste" }).click();
   await expect(page).toHaveURL(/vue=liste/);
 
+  // Recompter dans la vue liste avant de filtrer : la grille rend un lien par
+  // œuvre (WorkCard), la liste en rend deux (WorkRow, vignette + titre).
+  // Comparer d'une vue à l'autre ne dit rien de ce que le filtre a retranché.
+  const listed = await page.locator('a[href^="/oeuvre/"]').count();
+
   // Un filtre restreint sans jamais élargir.
   await page.getByRole("link", { name: "4 ★ et +" }).click();
   await expect(page).toHaveURL(/note=4/);
   const filtered = await page.locator('a[href^="/oeuvre/"]').count();
-  expect(filtered).toBeLessThanOrEqual(mine);
+  expect(filtered).toBeLessThanOrEqual(listed);
 
   await page.goto("/catalogue");
   const catalogue = await page.locator('a[href^="/oeuvre/"]').count();
