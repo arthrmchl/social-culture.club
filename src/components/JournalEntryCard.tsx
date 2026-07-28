@@ -34,13 +34,26 @@ function subUnitLabel(e: JournalEntryCardData): string | null {
   return null;
 }
 
-/** Une entrée du journal (S4). `showWork` ajoute la vignette de l'œuvre (vue globale). */
+/**
+ * Une entrée du journal (S4). `showWork` ajoute la vignette de l'œuvre (vue
+ * globale).
+ *
+ * `canDelete` passe à faux sur les surfaces publiques du lot 4 : la carte y
+ * affiche l'entrée d'autrui, et `footer` reçoit alors les gestes sociaux
+ * (j'aime, commentaires) à la place du bouton de suppression. Un seul composant
+ * pour les deux usages — la mise en forme d'une entrée n'a pas à diverger selon
+ * qui la regarde.
+ */
 export function JournalEntryCard({
   entry,
   showWork = true,
+  canDelete = true,
+  footer,
 }: {
   entry: JournalEntryCardData;
   showWork?: boolean;
+  canDelete?: boolean;
+  footer?: React.ReactNode;
 }) {
   const media = MEDIA[entry.work.type];
   const cover = entry.work.coverImageId
@@ -117,9 +130,12 @@ export function JournalEntryCard({
           </div>
         )}
 
-        <div className="mt-2">
-          <DeleteEntryButton entryId={entry.id} />
-        </div>
+        {canDelete && (
+          <div className="mt-2">
+            <DeleteEntryButton entryId={entry.id} />
+          </div>
+        )}
+        {footer && <div className="mt-2">{footer}</div>}
       </div>
     </div>
   );

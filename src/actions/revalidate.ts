@@ -25,3 +25,24 @@ export function revalidateLists(slug?: string): void {
   if (slug) revalidatePath(`/listes/${slug}`);
   revalidatePath("/");
 }
+
+/**
+ * Les vues d'un profil public (lot 4).
+ *
+ * `username` est nullable en base : sans pseudonyme, il n'y a pas d'URL à
+ * purger, et l'appel est sans effet plutôt que d'échouer.
+ *
+ * Rappel qui vaut pour tout ce qui suit : `revalidatePath` purge **par
+ * chemin**, jamais par visiteur. Ces appels servent la fraîcheur, pas la
+ * confidentialité — celle-ci est tenue par `src/lib/social/read.ts` et par le
+ * `force-dynamic` du groupe `(public)`.
+ */
+export function revalidateProfile(username: string | null): void {
+  revalidatePath("/profil");
+  revalidatePath("/confidentialite");
+  if (!username) return;
+  revalidatePath(`/u/${username}`);
+  revalidatePath(`/u/${username}/journal`);
+  revalidatePath(`/u/${username}/critiques`);
+  revalidatePath(`/u/${username}/listes`);
+}
