@@ -252,7 +252,7 @@ async function main() {
     `Favoris — plafond ${lot3.favoriteCap} respecté : ${lot3.favoriteCount} (attendu ${lot3.favoriteCap})`,
   );
   console.log(
-    `Export — version ${lot3.exportVersion}, ${lot3.exportEntities} entités CSV (attendu 2 et 14)`,
+    `Export — version ${lot3.exportVersion}, ${lot3.exportEntities} entités CSV (attendu 3 et 18)`,
   );
 
   console.log(
@@ -820,7 +820,7 @@ async function verifyLibrary(userId: string, mangaId: string, filmId: string) {
       !quoteOnFilm &&
       goalDuplicateBlocked &&
       favoriteCount === MAX_FAVORITES &&
-      doc.version === 2 &&
+      doc.version === 3 &&
       doc.lists.length > 0 &&
       csvOk,
   };

@@ -253,10 +253,22 @@ copie hors-site chiffrée, et surveillance de l'espace disque. À noter :
 l'export I4 n'est **pas** une sauvegarde — il ne couvre qu'un utilisateur et
 n'embarque pas les visuels.
 
-## Hors périmètre (lots suivants)
+## Social (lot 4)
 
-Social — profils publics, abonnements, fil d'activité, commentaires,
-modération (lot 4) ; statistiques, rétrospective annuelle, PWA (lot 5).
+Profils publics partageables par lien (`/u/<pseudonyme>`), réglages de
+visibilité, abonnements et demandes d'abonnement, fil d'activité, page
+« découvrir », j'aime et commentaires sur les entrées de journal, les listes et
+les critiques, notifications internes, signalement, blocage, file de modération
+et propositions de correction (D30).
+
+Deux points valent d'être connus à l'usage. Les profils sont **ouverts hors
+connexion** — c'est le seul endroit de l'application qui le soit ; tout le reste
+reste derrière la connexion. Et le fil ignore les entrées **importées** : sans
+cela, reprendre un historique Letterboxd noierait le fil de tous vos abonnés.
+
+## Hors périmètre (lot suivant)
+
+Statistiques, rétrospective annuelle et PWA (lot 5).
 
 Les listes présentes dans un export Letterboxd sont désormais **importées**
 (S9), de même que les étiquettes du journal (S10). Un lot importé avant le

@@ -39,6 +39,10 @@ export async function collectUserExport(
     favorites,
     quotes,
     goals,
+    follows,
+    socialLikes,
+    comments,
+    blocks,
   ] = await Promise.all([
     db.userWork.findMany({ where: { userId }, orderBy: { createdAt: "asc" } }),
     db.journalEntry.findMany({
@@ -124,6 +128,53 @@ export async function collectUserExport(
       where: { userId },
       orderBy: [{ year: "desc" }, { scope: "asc" }],
     }),
+    // ── Social (lot 4) ────────────────────────────────────────
+    // Les gestes de l'utilisateur, jamais ceux qu'il a reçus : les
+    // notifications sont dérivées de l'activité d'autrui, et les signalements
+    // parlent d'un tiers. Ni l'un ni l'autre n'est « sa » donnée au sens de N4.
+    db.follow.findMany({
+      where: { OR: [{ followerId: userId }, { followingId: userId }] },
+      orderBy: { createdAt: "asc" },
+      include: {
+        follower: { select: { username: true, name: true } },
+        following: { select: { username: true, name: true } },
+      },
+    }),
+    db.socialLike.findMany({
+      where: { userId },
+      orderBy: { createdAt: "asc" },
+      include: {
+        journalEntry: {
+          select: { workId: true, user: { select: { username: true } } },
+        },
+        list: {
+          select: { title: true, user: { select: { username: true } } },
+        },
+        userWork: {
+          select: { workId: true, user: { select: { username: true } } },
+        },
+      },
+    }),
+    db.comment.findMany({
+      where: { authorId: userId },
+      orderBy: { createdAt: "asc" },
+      include: {
+        journalEntry: {
+          select: { workId: true, user: { select: { username: true } } },
+        },
+        list: {
+          select: { title: true, user: { select: { username: true } } },
+        },
+        userWork: {
+          select: { workId: true, user: { select: { username: true } } },
+        },
+      },
+    }),
+    db.block.findMany({
+      where: { blockerId: userId },
+      orderBy: { createdAt: "asc" },
+      include: { blocked: { select: { username: true, name: true } } },
+    }),
   ]);
 
   // Toutes les œuvres référencées, quelle que soit la voie. Une œuvre présente
@@ -140,6 +191,18 @@ export async function collectUserExport(
     ...tags.flatMap((t) => t.works.map((w) => w.workId)),
     ...favorites.map((f) => f.workId),
     ...quotes.map((q) => q.workId),
+    // Les œuvres qu'on a aimées ou commentées chez d'autres : sans elles, la
+    // ligne d'export sortirait sans titre.
+    ...socialLikes.flatMap((l) =>
+      [l.journalEntry?.workId, l.userWork?.workId].filter(
+        (id): id is string => !!id,
+      ),
+    ),
+    ...comments.flatMap((c) =>
+      [c.journalEntry?.workId, c.userWork?.workId].filter(
+        (id): id is string => !!id,
+      ),
+    ),
   ]);
 
   const works = await collectWorks([...workIds]);
@@ -155,6 +218,9 @@ export async function collectUserExport(
       email: user.email,
       bio: user.bio,
       createdAt: user.createdAt.toISOString(),
+      visibility: user.visibility,
+      showJournalPublicly: user.showJournalPublicly,
+      showStatsPublicly: user.showStatsPublicly,
     },
     works,
     userWorks: userWorks.map((u) => ({
@@ -267,6 +333,78 @@ export async function collectUserExport(
       scopeLabel: scopeLabel(g.scope),
       target: g.target,
     })),
+    // ── Social (lot 4) ────────────────────────────────────────
+    // Les comptes sont désignés par leur pseudonyme, jamais par un identifiant
+    // interne — même principe que les sous-unités par leur numéro : le fichier
+    // doit rester lisible sans l'application (N4).
+    follows: follows.map((f) => ({
+      direction: f.followerId === userId ? "abonnement" : "abonné",
+      username:
+        f.followerId === userId ? f.following.username : f.follower.username,
+      name: f.followerId === userId ? f.following.name : f.follower.name,
+      status: f.status,
+      createdAt: f.createdAt.toISOString(),
+      acceptedAt: iso(f.acceptedAt),
+    })),
+    socialLikes: socialLikes.map((l) => ({
+      ...socialTargetOf(l),
+      createdAt: l.createdAt.toISOString(),
+    })),
+    comments: comments.map((c) => ({
+      ...socialTargetOf(c),
+      body: c.body,
+      hidden: c.hiddenAt !== null,
+      createdAt: c.createdAt.toISOString(),
+      updatedAt: c.updatedAt.toISOString(),
+    })),
+    blocks: blocks.map((b) => ({
+      username: b.blocked.username,
+      name: b.blocked.name,
+      reason: b.reason,
+      createdAt: b.createdAt.toISOString(),
+    })),
+  };
+}
+
+type SocialRow = {
+  journalEntry: { workId: string; user: { username: string | null } } | null;
+  list: { title: string; user: { username: string | null } } | null;
+  userWork: { workId: string; user: { username: string | null } } | null;
+};
+
+/** Décrit la cible d'un j'aime ou d'un commentaire, en clair. */
+function socialTargetOf(row: SocialRow) {
+  if (row.journalEntry) {
+    return {
+      targetKind: "entrée de journal",
+      targetAuthor: row.journalEntry.user.username,
+      workId: row.journalEntry.workId,
+      listTitle: null,
+    };
+  }
+  if (row.list) {
+    return {
+      targetKind: "liste",
+      targetAuthor: row.list.user.username,
+      workId: null,
+      listTitle: row.list.title,
+    };
+  }
+  if (row.userWork) {
+    return {
+      targetKind: "critique",
+      targetAuthor: row.userWork.user.username,
+      workId: row.userWork.workId,
+      listTitle: null,
+    };
+  }
+  // La cible a été supprimée entre-temps : on l'exporte quand même, sans quoi
+  // le geste disparaîtrait sans trace.
+  return {
+    targetKind: "inconnue",
+    targetAuthor: null,
+    workId: null,
+    listTitle: null,
   };
 }
 
@@ -493,6 +631,47 @@ export function entityToCsv(doc: ExportedDocument, entity: CsvEntity): string {
         col("Par défaut", (r) => r.isDefault),
         col("Tomes couverts", (r) => r.covers),
       ]);
+
+    // ── Social (lot 4) ────────────────────────────────────────
+    case "abonnements":
+      return toCsv(doc.follows as FollowRow[], [
+        col("Sens", (r) => r.direction),
+        col("Membre", (r) => r.name),
+        col("Nom d'utilisateur", (r) => r.username),
+        col("Statut", (r) => r.status),
+        col("Depuis le", (r) => r.createdAt),
+        col("Accepté le", (r) => r.acceptedAt),
+      ]);
+
+    case "jaime-sociaux":
+      return toCsv(doc.socialLikes as SocialRowCsv[], [
+        col("Nature", (r) => r.targetKind),
+        col("Auteur", (r) => r.targetAuthor),
+        col("Œuvre", (r) => (r.workId ? (titles.get(r.workId) ?? "") : "")),
+        col("Identifiant œuvre", (r) => r.workId),
+        col("Liste", (r) => r.listTitle),
+        col("Le", (r) => r.createdAt),
+      ]);
+
+    case "commentaires":
+      return toCsv(doc.comments as CommentRow[], [
+        col("Nature", (r) => r.targetKind),
+        col("Auteur", (r) => r.targetAuthor),
+        col("Œuvre", (r) => (r.workId ? (titles.get(r.workId) ?? "") : "")),
+        col("Identifiant œuvre", (r) => r.workId),
+        col("Liste", (r) => r.listTitle),
+        col("Texte", (r) => r.body),
+        col("Masqué", (r) => r.hidden),
+        col("Publié le", (r) => r.createdAt),
+      ]);
+
+    case "blocages":
+      return toCsv(doc.blocks as BlockRow[], [
+        col("Membre", (r) => r.name),
+        col("Nom d'utilisateur", (r) => r.username),
+        col("Motif", (r) => r.reason),
+        col("Bloqué le", (r) => r.createdAt),
+      ]);
   }
 }
 
@@ -642,6 +821,29 @@ type GoalRow = {
   scope: string;
   scopeLabel: string;
   target: number;
+};
+// Social (lot 4)
+type FollowRow = {
+  direction: string;
+  username: string | null;
+  name: string;
+  status: string;
+  createdAt: string;
+  acceptedAt: string | null;
+};
+type SocialRowCsv = {
+  targetKind: string;
+  targetAuthor: string | null;
+  workId: string | null;
+  listTitle: string | null;
+  createdAt: string;
+};
+type CommentRow = SocialRowCsv & { body: string; hidden: boolean };
+type BlockRow = {
+  username: string | null;
+  name: string;
+  reason: string | null;
+  createdAt: string;
 };
 type FlatEditionRow = {
   title: string;

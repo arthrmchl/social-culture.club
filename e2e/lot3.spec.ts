@@ -88,6 +88,13 @@ test("étiquette une œuvre et la retrouve par la page du tag", async () => {
     .getByRole("button", { name: "Enregistrer les étiquettes" })
     .click();
 
+  // Attendre la confirmation avant de recharger : le clic rend la main avant
+  // que la transition serveur n'aboutisse, et un `reload()` immédiat
+  // l'interrompt — l'étiquette n'est alors jamais écrite.
+  await expect(
+    page.getByRole("button", { name: "Étiquettes enregistrées" }),
+  ).toBeVisible();
+
   await page.reload();
   await expect(page.getByRole("link", { name: `#${TAG}` })).toBeVisible();
 
@@ -103,9 +110,15 @@ test("met une œuvre en favori de profil", async () => {
   const favorite = page.getByRole("button", { name: "Favori" });
   if ((await favorite.getAttribute("aria-pressed")) === "true") {
     await favorite.click(); // repartir d'un état connu
+    await expect(favorite).toBeEnabled();
   }
   await favorite.click();
   await expect(favorite).toHaveAttribute("aria-pressed", "true");
+  // `aria-pressed` est optimiste : il bascule avant l'aller-retour serveur. Le
+  // bouton, lui, n'est réactivé qu'à la fin de la transition — c'est ce
+  // signal-là qu'il faut attendre avant de naviguer, sinon on interrompt
+  // l'écriture.
+  await expect(favorite).toBeEnabled();
 
   await page.goto("/profil");
   await expect(page.getByText("Mes favoris")).toBeVisible();

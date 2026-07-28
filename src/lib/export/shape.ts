@@ -14,8 +14,14 @@ export const EXPORT_FORMAT = "social-culture.club";
  * éditions. Le numéro change parce qu'un lecteur doit pouvoir distinguer
  * « pas de listes parce que l'utilisateur n'en a pas » de « pas de listes
  * parce que c'est un export d'avant le lot 3 ».
+ *
+ * Version 3 (lot 4) : réglages de visibilité, abonnements, j'aime sociaux,
+ * commentaires et blocages. N4 exige que le membre reparte avec **tout** ce
+ * qu'il a produit — un commentaire est un écrit au même titre qu'une critique.
+ * Ce qui n'est pas exporté l'est délibérément : les notifications (dérivées des
+ * gestes d'autrui) et les signalements (qui parlent d'un tiers).
  */
-export const EXPORT_VERSION = 2;
+export const EXPORT_VERSION = 3;
 
 export type ExportedWork = {
   id: string;
@@ -60,6 +66,10 @@ export type ExportedDocument = {
     email: string;
     bio: string | null;
     createdAt: string;
+    /** Réglages de visibilité (lot 4, D26) — absents des exports v1 et v2. */
+    visibility?: string;
+    showJournalPublicly?: boolean;
+    showStatsPublicly?: boolean;
   };
   works: ExportedWork[];
   userWorks: unknown[];
@@ -75,6 +85,11 @@ export type ExportedDocument = {
   favorites: unknown[];
   quotes: unknown[];
   goals: unknown[];
+  // Social (lot 4) — les gestes de l'utilisateur, pas ceux qu'il a reçus.
+  follows: unknown[];
+  socialLikes: unknown[];
+  comments: unknown[];
+  blocks: unknown[];
 };
 
 /** Nom de fichier d'un export : stable, daté, sans caractère problématique. */
@@ -108,6 +123,11 @@ export const CSV_ENTITIES = [
   "citations",
   "objectifs",
   "editions",
+  // Social (lot 4)
+  "abonnements",
+  "jaime-sociaux",
+  "commentaires",
+  "blocages",
 ] as const;
 
 export type CsvEntity = (typeof CSV_ENTITIES)[number];
@@ -131,4 +151,8 @@ export const ENTITY_LABELS: Record<CsvEntity, string> = {
   citations: "Citations",
   objectifs: "Objectifs annuels",
   editions: "Éditions",
+  abonnements: "Abonnements",
+  "jaime-sociaux": "J'aime sur des publications",
+  commentaires: "Commentaires",
+  blocages: "Comptes bloqués",
 };
