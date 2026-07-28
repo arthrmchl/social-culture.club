@@ -19,7 +19,6 @@ export function allowedStates(type: WorkType): WorkStatusState[] {
         "COMPLETED",
       ];
     case "BOOK":
-    case "ONE_SHOT":
     case "BD_SERIES":
     case "MANGA_SERIES":
       return ["WANT", "IN_PROGRESS", "ON_HOLD", "DROPPED", "COMPLETED"];
@@ -44,7 +43,6 @@ function wantLabel(type: WorkType): string {
     case "ANIME":
       return "À voir";
     case "BOOK":
-    case "ONE_SHOT":
       return "Envie de lire";
     case "BD_SERIES":
     case "MANGA_SERIES":

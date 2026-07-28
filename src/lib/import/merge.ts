@@ -106,7 +106,6 @@ function mergeType(a: WorkType, b: WorkType): WorkType {
   if (a === b) return a;
   const rank: Record<WorkType, number> = {
     BOOK: 0,
-    ONE_SHOT: 0,
     FILM: 1,
     SERIES: 2,
     ANIME: 2,
