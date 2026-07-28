@@ -5,6 +5,7 @@
  * Usage : npx tsx scripts/verify.ts
  */
 import "dotenv/config";
+import { randomUUID } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, Prisma } from "../src/generated/prisma/client";
 import { normalizeTitle } from "../src/lib/text";
@@ -29,6 +30,7 @@ import { isReading } from "../src/lib/media";
 import { MAX_FAVORITES } from "../src/lib/favorites";
 import { collectUserExport, entityToCsv } from "../src/lib/export/collect";
 import { CSV_ENTITIES } from "../src/lib/export/shape";
+import { accessFor, blockedUserIds } from "../src/lib/social/access";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const db = new PrismaClient({ adapter });
@@ -185,6 +187,9 @@ async function main() {
   // ── Lot 3 : bibliothèque riche ───────────────────────────────
   const lot3 = await verifyLibrary(admin.id, manga.id, film.id);
 
+  // ── Lot 4 : social ───────────────────────────────────────────
+  const lot4 = await verifySocial(admin.id, film.id);
+
   console.log("── Résultats de vérification ─────────────────");
   console.log(`Film créé             : ${film.titleFr} (${film.year})`);
   console.log(`Anime — épisodes gén. : ${epCount} (attendu 24)`);
@@ -249,6 +254,31 @@ async function main() {
     `Export — version ${lot3.exportVersion}, ${lot3.exportEntities} entités CSV (attendu 2 et 14)`,
   );
 
+  console.log(
+    `Abonnement — doublon rejeté : ${lot4.followDuplicateBlocked} (attendu true)`,
+  );
+  console.log(
+    `J'aime — entrée + liste par le même membre : ${lot4.likesAcrossTargets} (attendu 2 — les NULL ne se gênent pas)`,
+  );
+  console.log(
+    `J'aime — doublon sur la même entrée rejeté : ${lot4.likeDuplicateBlocked} (attendu true)`,
+  );
+  console.log(
+    `Cascade — entrée supprimée → j'aime/commentaires/notifications : ${lot4.orphansAfterDelete} (attendu 0)`,
+  );
+  console.log(
+    `Suppression de compte — chargé de social : ${lot4.accountDeleted} (attendu true, sans erreur de contrainte)`,
+  );
+  console.log(
+    `Suppression de compte — signalement survivant, reporterId à NULL : ${lot4.reportSurvived} (attendu true)`,
+  );
+  console.log(
+    `Visibilité PRIVATE — avant/après acceptation : ${lot4.privateBefore}/${lot4.privateAfter} (attendu false/true)`,
+  );
+  console.log(
+    `Blocage — symétrie A↔B : ${lot4.blockSymmetric} (attendu true — stocké dans un sens, appliqué dans les deux)`,
+  );
+
   const ok =
     epCount === 24 &&
     tomeCount === 23 &&
@@ -259,10 +289,248 @@ async function main() {
     seriesState === "CAUGHT_UP" &&
     tomesState === "COMPLETED" &&
     lot2.ok &&
-    lot3.ok;
+    lot3.ok &&
+    lot4.ok;
   console.log(ok ? "\n✅ TOUTES LES VÉRIFICATIONS PASSENT" : "\n❌ ÉCHEC");
   await db.$disconnect();
   process.exit(ok ? 0 : 1);
+}
+
+/**
+ * Lot 4 — social, contre la vraie base.
+ *
+ * Trois choses ne peuvent être prouvées que d'ici. Les contraintes d'unicité,
+ * d'abord — et surtout la cohabitation des trois uniques de `SocialLike`, qui
+ * repose sur le fait que PostgreSQL considère les NULL comme distincts. La
+ * **suppression de compte**, ensuite : `Work.createdById` est en Restrict, une
+ * seule clé étrangère sociale mal déclarée ferait échouer `db.user.delete()`,
+ * et cela ne se verrait qu'au départ d'un membre. Les règles de visibilité,
+ * enfin, exercées par `accessFor` — le chemin réel des pages, pas une
+ * réimplémentation qui pourrait diverger.
+ */
+async function verifySocial(adminId: string, workId: string) {
+  const JETABLE = "verify-jetable@social-culture.club";
+
+  // Nettoyage d'entrée : le script doit être rejouable.
+  await db.user.deleteMany({ where: { email: JETABLE } });
+  await db.journalEntry.deleteMany({ where: { importKey: "verify-social" } });
+
+  const jetable = await db.user.create({
+    data: {
+      id: randomUUID(),
+      name: "Compte jetable",
+      email: JETABLE,
+      username: `verif-${Date.now().toString(36)}`,
+      emailVerified: true,
+    },
+  });
+
+  // ── 1. Abonnement : l'unique mord ────────────────────────────
+  await db.follow.create({
+    data: { followerId: jetable.id, followingId: adminId, status: "PENDING" },
+  });
+  let followDuplicateBlocked = false;
+  try {
+    await db.follow.create({
+      data: { followerId: jetable.id, followingId: adminId },
+    });
+  } catch {
+    followDuplicateBlocked = true;
+  }
+
+  // ── 2 & 3. J'aime : trois uniques qui ne se gênent pas ───────
+  const entry = await db.journalEntry.create({
+    data: {
+      userId: adminId,
+      workId,
+      loggedAt: new Date(),
+      reviewText: "Critique de vérification.",
+      importKey: "verify-social",
+    },
+  });
+  const list = await db.list.upsert({
+    where: { userId_slug: { userId: adminId, slug: "verif-social" } },
+    update: {},
+    create: { userId: adminId, title: "Vérif social", slug: "verif-social" },
+  });
+
+  // Le même membre aime une entrée **et** une liste : les deux lignes ont
+  // `userId` en commun et diffèrent par la colonne renseignée. Sans la
+  // distinction des NULL, la seconde serait rejetée.
+  await db.socialLike.create({
+    data: { userId: jetable.id, journalEntryId: entry.id },
+  });
+  await db.socialLike.create({
+    data: { userId: jetable.id, listId: list.id },
+  });
+  const likesAcrossTargets = await db.socialLike.count({
+    where: { userId: jetable.id },
+  });
+
+  let likeDuplicateBlocked = false;
+  try {
+    await db.socialLike.create({
+      data: { userId: jetable.id, journalEntryId: entry.id },
+    });
+  } catch {
+    likeDuplicateBlocked = true;
+  }
+
+  // ── 4. Cascade au départ d'un contenu ────────────────────────
+  const comment = await db.comment.create({
+    data: {
+      authorId: jetable.id,
+      journalEntryId: entry.id,
+      body: "Commentaire de vérification.",
+    },
+  });
+  await db.notification.create({
+    data: {
+      userId: adminId,
+      actorId: jetable.id,
+      type: "COMMENT",
+      journalEntryId: entry.id,
+      commentId: comment.id,
+    },
+  });
+
+  await db.journalEntry.delete({ where: { id: entry.id } });
+  const orphansAfterDelete =
+    (await db.socialLike.count({ where: { journalEntryId: entry.id } })) +
+    (await db.comment.count({ where: { journalEntryId: entry.id } })) +
+    (await db.notification.count({ where: { journalEntryId: entry.id } }));
+
+  // ── 5 & 6. Suppression de compte chargé de social ────────────
+  // La garde anti-régression du piège `Work.createdById` en Restrict : toute
+  // FK sociale vers User mal déclarée fait échouer ce delete.
+  await db.report.create({
+    data: {
+      reporterId: jetable.id,
+      targetKind: "LIST",
+      targetLabel: list.title,
+      listId: list.id,
+      reason: "SPAM",
+    },
+  });
+  await db.correctionSuggestion.create({
+    data: { workId, authorId: jetable.id, message: "Année à vérifier." },
+  });
+  await db.notification.create({
+    data: { userId: adminId, actorId: jetable.id, type: "FOLLOW" },
+  });
+  await db.block.create({
+    data: { blockerId: jetable.id, blockedId: adminId },
+  });
+
+  let accountDeleted = false;
+  try {
+    await db.user.delete({ where: { id: jetable.id } });
+    accountDeleted = true;
+  } catch (e) {
+    console.error("Suppression du compte jetable :", e);
+  }
+
+  // Le signalement survit au départ de son rapporteur (SetNull) — sans quoi
+  // l'historique de modération se viderait à chaque compte supprimé.
+  const survivor = await db.report.findFirst({
+    where: { listId: list.id, targetKind: "LIST" },
+    select: { reporterId: true },
+  });
+  const reportSurvived = survivor !== null && survivor.reporterId === null;
+
+  // ── 7. Visibilité : le chemin réel des pages ─────────────────
+  const membre = await db.user.findFirst({
+    where: { role: { not: "admin" }, email: { not: JETABLE } },
+    select: { id: true },
+  });
+  const viewer = membre ? { id: membre.id, isAdmin: false } : null;
+
+  const previousVisibility = (
+    await db.user.findUniqueOrThrow({
+      where: { id: adminId },
+      select: { visibility: true },
+    })
+  ).visibility;
+
+  await db.user.update({
+    where: { id: adminId },
+    data: { visibility: "PRIVATE" },
+  });
+  await db.follow.deleteMany({
+    where: { followerId: membre?.id, followingId: adminId },
+  });
+
+  const before = await accessFor(viewer, adminId);
+  const privateBefore = before?.access.canSeeJournal ?? false;
+
+  if (membre) {
+    await db.follow.create({
+      data: {
+        followerId: membre.id,
+        followingId: adminId,
+        status: "ACCEPTED",
+        acceptedAt: new Date(),
+      },
+    });
+  }
+  const after = await accessFor(viewer, adminId);
+  const privateAfter = after?.access.canSeeJournal ?? false;
+
+  // ── 8. Symétrie du blocage ───────────────────────────────────
+  let blockSymmetric = false;
+  if (membre) {
+    await db.block.deleteMany({
+      where: {
+        OR: [
+          { blockerId: adminId, blockedId: membre.id },
+          { blockerId: membre.id, blockedId: adminId },
+        ],
+      },
+    });
+    await db.block.create({
+      data: { blockerId: adminId, blockedId: membre.id },
+    });
+    // Stocké dans un seul sens, il doit se lire dans les deux.
+    const seenByBlocked = await blockedUserIds(membre.id);
+    const seenByBlocker = await blockedUserIds(adminId);
+    blockSymmetric =
+      seenByBlocked.includes(adminId) && seenByBlocker.includes(membre.id);
+
+    await db.block.deleteMany({
+      where: { blockerId: adminId, blockedId: membre.id },
+    });
+  }
+
+  // Nettoyage de sortie : on rend le compte administrateur à son état.
+  await db.user.update({
+    where: { id: adminId },
+    data: { visibility: previousVisibility },
+  });
+  await db.follow.deleteMany({ where: { followingId: adminId } });
+  await db.list.deleteMany({ where: { id: list.id } });
+  await db.report.deleteMany({ where: { targetLabel: list.title } });
+
+  return {
+    followDuplicateBlocked,
+    likesAcrossTargets,
+    likeDuplicateBlocked,
+    orphansAfterDelete,
+    accountDeleted,
+    reportSurvived,
+    privateBefore,
+    privateAfter,
+    blockSymmetric,
+    ok:
+      followDuplicateBlocked &&
+      likesAcrossTargets === 2 &&
+      likeDuplicateBlocked &&
+      orphansAfterDelete === 0 &&
+      accountDeleted &&
+      reportSurvived &&
+      privateBefore === false &&
+      privateAfter === true &&
+      blockSymmetric,
+  };
 }
 
 /**
