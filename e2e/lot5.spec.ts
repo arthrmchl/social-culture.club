@@ -34,7 +34,6 @@ test("un livre se crée sans visuel : D31 ne vaut plus pour une lecture", async 
 
   // Le champ de téléversement n'est pas rendu : rien à obliger.
   await expect(page.locator('input[type="file"]')).toHaveCount(0);
-  await expect(page.getByText(/visuel appartient à l'édition/i)).toBeVisible();
 
   await page.fill("#titleFr", BOOK);
   await page.fill("#titleOriginal", "Ulysses");

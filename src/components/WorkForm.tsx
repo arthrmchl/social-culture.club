@@ -108,18 +108,15 @@ export function WorkForm({
       )}
 
       <div className="flex flex-col gap-6 sm:flex-row">
-        {ownsCover ? (
+        {/* Une lecture ne porte pas de visuel : celui de ses éditions s'ajoute
+            depuis la fiche (lot 5). */}
+        {ownsCover && (
           <CoverUpload
             name="coverImageId"
             defaultImageId={initial.coverImageId}
             label="Visuel"
             required
           />
-        ) : (
-          <Card className="w-full max-w-[12rem] shrink-0 p-4 text-sm text-muted">
-            Le visuel appartient à l&apos;édition : ajoutez-en une depuis la
-            fiche, avec sa couverture.
-          </Card>
         )}
 
         <div className="flex flex-1 flex-col gap-4">
