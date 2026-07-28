@@ -4,7 +4,15 @@ import { useState, useTransition } from "react";
 import { toggleLike } from "@/actions/status";
 import { cn } from "@/lib/utils";
 
-/** Cœur « j'aime », indépendant de la note (S6). */
+/**
+ * Cœur « j'aime cette œuvre », indépendant de la note (S6).
+ *
+ * À ne pas confondre avec `SocialLikeButton` (lot 4, P3), qui aime **ce qu'un
+ * membre a écrit** — une entrée, une liste, une critique. Celui-ci est une
+ * donnée de suivi personnelle, stockée sur `UserWork.liked` ; l'autre est une
+ * donnée sociale, stockée sur `SocialLike`. Le libellé le dit aussi, depuis que
+ * les deux cohabitent à l'écran.
+ */
 export function LikeButton({
   workId,
   liked,
@@ -42,7 +50,7 @@ export function LikeButton({
       )}
     >
       <span className="text-lg leading-none">{on ? "♥" : "♡"}</span>
-      J'aime
+      J'aime cette œuvre
     </button>
   );
 }

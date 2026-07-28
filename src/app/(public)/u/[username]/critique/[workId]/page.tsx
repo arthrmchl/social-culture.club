@@ -2,8 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { Avatar } from "@/components/social/ProfileHeader";
+import { CommentThread } from "@/components/social/CommentThread";
 import { ReviewCard } from "@/components/social/ReviewCard";
-import { getPublicReview } from "@/lib/social/read";
+import { SocialFooter } from "@/components/social/SocialFooter";
+import {
+  getComments,
+  getPublicReview,
+  getSocialCounts,
+} from "@/lib/social/read";
 
 type Props = { params: Promise<{ username: string; workId: string }> };
 
@@ -28,6 +34,13 @@ export default async function ReviewPermalinkPage({ params }: Props) {
   if (!view) notFound();
 
   const { profile } = view.author;
+  // La cible est le UserWork, pas l'œuvre : on commente ce qu'un membre a
+  // écrit, jamais une fiche du catalogue partagé.
+  const target = { kind: "review" as const, id: view.review.id };
+  const [counts, comments] = await Promise.all([
+    getSocialCounts(target, profile.id),
+    getComments(target, profile.id),
+  ]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -44,7 +57,17 @@ export default async function ReviewPermalinkPage({ params }: Props) {
         </span>
       </Link>
 
-      <ReviewCard review={view.review} username={username} />
+      <ReviewCard
+        review={view.review}
+        username={username}
+        footer={<SocialFooter target={target} counts={counts} />}
+      />
+
+      <CommentThread
+        target={target}
+        comments={comments}
+        canInteract={counts.canInteract}
+      />
     </div>
   );
 }

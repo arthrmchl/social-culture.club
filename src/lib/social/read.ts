@@ -2,6 +2,7 @@ import "server-only";
 
 import { db } from "@/lib/db";
 import { canSeeContent } from "@/lib/visibility";
+import { targetWhere, type SocialTarget } from "@/lib/social-target";
 import type { WorkType } from "@/generated/prisma/enums";
 import { blockedUserIds, isOwnerOrAdmin, type AccessTo } from "./access";
 import { accessTo, accessToUsername, getViewer } from "./viewer";
@@ -521,4 +522,107 @@ export async function getFollowList(
 /** Le profil d'un membre par identifiant — pour les pages de `(app)`. */
 export async function getAccess(authorId: string) {
   return accessTo(authorId);
+}
+
+export type SocialCounts = {
+  likes: number;
+  comments: number;
+  /** Le visiteur a-t-il déjà aimé ? `false` s'il n'est pas connecté. */
+  likedByMe: boolean;
+  /** Peut-il aimer et commenter ? Décide de l'état des boutons. */
+  canInteract: boolean;
+};
+
+/** Les compteurs sociaux d'une cible (P3). */
+export async function getSocialCounts(
+  target: SocialTarget,
+  ownerId: string,
+): Promise<SocialCounts> {
+  const viewer = await getViewer();
+  const where = targetWhere(target);
+
+  const [likes, comments, mine, acc] = await Promise.all([
+    db.socialLike.count({ where }),
+    // Les commentaires masqués ne comptent pas : afficher « 3 commentaires »
+    // et n'en montrer que deux serait le meilleur moyen de faire chercher le
+    // troisième.
+    db.comment.count({ where: { ...where, hiddenAt: null } }),
+    viewer
+      ? db.socialLike.findFirst({
+          where: { userId: viewer.id, ...where },
+          select: { id: true },
+        })
+      : Promise.resolve(null),
+    viewer ? accessTo(ownerId) : Promise.resolve(null),
+  ]);
+
+  return {
+    likes,
+    comments,
+    likedByMe: mine !== null,
+    canInteract: acc?.access.canInteract ?? false,
+  };
+}
+
+export type CommentData = {
+  id: string;
+  body: string;
+  createdAt: Date;
+  hiddenAt: Date | null;
+  author: PublicMember;
+  /** Le visiteur peut-il le supprimer ? (auteur, propriétaire, admin) */
+  canDelete: boolean;
+};
+
+/**
+ * Le fil de commentaires d'une cible (P3), plat et chronologique.
+ *
+ * Les commentaires des comptes bloqués sont retirés, dans les deux sens : c'est
+ * la contrepartie de ne pas les supprimer au blocage, ce qui rend le déblocage
+ * réversible.
+ */
+export async function getComments(
+  target: SocialTarget,
+  ownerId: string,
+): Promise<CommentData[]> {
+  const viewer = await getViewer();
+  const blocked = await blockedUserIds(viewer?.id ?? null);
+  const isModerator = viewer?.isAdmin ?? false;
+
+  const rows = await db.comment.findMany({
+    where: {
+      ...targetWhere(target),
+      authorId: { notIn: blocked },
+      // Son auteur voit son commentaire masqué ; les autres non.
+      ...(isModerator
+        ? {}
+        : viewer
+          ? { OR: [{ hiddenAt: null }, { authorId: viewer.id }] }
+          : { hiddenAt: null }),
+    },
+    orderBy: { createdAt: "asc" },
+    take: 200,
+    select: {
+      id: true,
+      body: true,
+      createdAt: true,
+      hiddenAt: true,
+      author: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          image: true,
+          bio: true,
+        },
+      },
+    },
+  });
+
+  return rows.map((c) => ({
+    ...c,
+    canDelete:
+      viewer !== null &&
+      (viewer.id === c.author.id || viewer.id === ownerId || viewer.isAdmin),
+  }));
 }

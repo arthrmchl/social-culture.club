@@ -2,9 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { JournalEntryCard } from "@/components/JournalEntryCard";
+import { CommentThread } from "@/components/social/CommentThread";
 import { HiddenBanner } from "@/components/social/ReviewCard";
 import { Avatar } from "@/components/social/ProfileHeader";
-import { getPublicEntry } from "@/lib/social/read";
+import { SocialFooter } from "@/components/social/SocialFooter";
+import { getComments, getPublicEntry, getSocialCounts } from "@/lib/social/read";
 
 type Props = { params: Promise<{ username: string; entryId: string }> };
 
@@ -30,6 +32,11 @@ export default async function EntryPermalinkPage({ params }: Props) {
   if (!view) notFound();
 
   const { profile } = view.author;
+  const target = { kind: "entry" as const, id: view.entry.id };
+  const [counts, comments] = await Promise.all([
+    getSocialCounts(target, profile.id),
+    getComments(target, profile.id),
+  ]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -50,7 +57,17 @@ export default async function EntryPermalinkPage({ params }: Props) {
         <HiddenBanner what="Entrée masquée par la modération" />
       )}
 
-      <JournalEntryCard entry={view.entry} canDelete={false} />
+      <JournalEntryCard
+        entry={view.entry}
+        canDelete={false}
+        footer={<SocialFooter target={target} counts={counts} />}
+      />
+
+      <CommentThread
+        target={target}
+        comments={comments}
+        canInteract={counts.canInteract}
+      />
     </div>
   );
 }

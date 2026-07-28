@@ -2,12 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { Avatar } from "@/components/social/ProfileHeader";
+import { CommentThread } from "@/components/social/CommentThread";
 import { PublicWorkCover } from "@/components/social/PublicWorkGrid";
 import { HiddenBanner } from "@/components/social/ReviewCard";
+import { SocialFooter } from "@/components/social/SocialFooter";
 import { EmptyState } from "@/components/ui/Card";
 import { describeList } from "@/lib/lists";
 import { formatYear } from "@/lib/media";
-import { getPublicList } from "@/lib/social/read";
+import { getComments, getPublicList, getSocialCounts } from "@/lib/social/read";
 
 type Props = { params: Promise<{ username: string; slug: string }> };
 
@@ -28,6 +30,11 @@ export default async function ListePubliquePage({ params }: Props) {
 
   const { profile } = view.author;
   const { list } = view;
+  const target = { kind: "list" as const, id: list.id };
+  const [counts, comments] = await Promise.all([
+    getSocialCounts(target, profile.id),
+    getComments(target, profile.id),
+  ]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -54,6 +61,9 @@ export default async function ListePubliquePage({ params }: Props) {
         {list.description && (
           <p className="mt-2 text-sm text-muted">{list.description}</p>
         )}
+        <div className="mt-2">
+          <SocialFooter target={target} counts={counts} />
+        </div>
       </div>
 
       {list.entries.length === 0 ? (
@@ -91,6 +101,12 @@ export default async function ListePubliquePage({ params }: Props) {
           ))}
         </ol>
       )}
+
+      <CommentThread
+        target={target}
+        comments={comments}
+        canInteract={counts.canInteract}
+      />
     </div>
   );
 }

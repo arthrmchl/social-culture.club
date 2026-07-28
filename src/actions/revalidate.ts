@@ -55,3 +55,35 @@ export function revalidateFeed(): void {
   revalidatePath("/fil");
   revalidatePath("/decouvrir");
 }
+
+/**
+ * Le permalien d'une cible sociale et la page qui la liste (lot 4, P3).
+ *
+ * Prend une cible **déjà résolue** — `resolveTarget` a chargé son propriétaire,
+ * son slug et son œuvre. Reconstruire ces informations ici demanderait une
+ * seconde requête pour un simple appel de cache.
+ */
+export function revalidateSocialTarget(resolved: {
+  target: { kind: "entry" | "list" | "review"; id: string };
+  slug: string | null;
+  workId: string | null;
+  ownerUsername?: string | null;
+}): void {
+  const u = resolved.ownerUsername;
+  if (!u) return;
+
+  switch (resolved.target.kind) {
+    case "entry":
+      revalidatePath(`/u/${u}/journal/${resolved.target.id}`);
+      revalidatePath(`/u/${u}/journal`);
+      break;
+    case "list":
+      if (resolved.slug) revalidatePath(`/u/${u}/listes/${resolved.slug}`);
+      revalidatePath(`/u/${u}/listes`);
+      break;
+    case "review":
+      if (resolved.workId) revalidatePath(`/u/${u}/critique/${resolved.workId}`);
+      revalidatePath(`/u/${u}/critiques`);
+      break;
+  }
+}

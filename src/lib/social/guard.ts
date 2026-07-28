@@ -74,6 +74,8 @@ export async function assertCanInteract(
 export type ResolvedTarget = {
   target: SocialTarget;
   ownerId: string;
+  /** Pseudonyme du propriétaire — de quoi bâtir le permalien et le revalider. */
+  ownerUsername: string | null;
   /** Masqué par la modération — on n'interagit pas avec ce qui est masqué. */
   hidden: boolean;
   /** Libellé figé, pour un signalement ou une notification. */
@@ -84,6 +86,8 @@ export type ResolvedTarget = {
   /** Extrait du texte visé, pour l'instantané d'un signalement. */
   text: string | null;
 };
+
+const OWNER_SELECT = { select: { username: true } } as const;
 
 /**
  * Résout une cible sociale en son propriétaire et son contexte.
@@ -103,6 +107,7 @@ export async function resolveTarget(
         where: { id: where.journalEntryId! },
         select: {
           userId: true,
+          user: OWNER_SELECT,
           hiddenAt: true,
           reviewText: true,
           workId: true,
@@ -113,6 +118,7 @@ export async function resolveTarget(
       return {
         target,
         ownerId: row.userId,
+        ownerUsername: row.user.username,
         hidden: row.hiddenAt !== null,
         label: row.work.titleFr,
         slug: null,
@@ -125,6 +131,7 @@ export async function resolveTarget(
         where: { id: where.listId! },
         select: {
           userId: true,
+          user: OWNER_SELECT,
           hiddenAt: true,
           isPrivate: true,
           title: true,
@@ -136,6 +143,7 @@ export async function resolveTarget(
       return {
         target,
         ownerId: row.userId,
+        ownerUsername: row.user.username,
         // Une liste rendue privée par son auteur ne se commente pas davantage
         // qu'une liste masquée : dans les deux cas elle a quitté les surfaces
         // sociales.
@@ -151,6 +159,7 @@ export async function resolveTarget(
         where: { id: where.userWorkId! },
         select: {
           userId: true,
+          user: OWNER_SELECT,
           hiddenAt: true,
           reviewText: true,
           workId: true,
@@ -161,6 +170,7 @@ export async function resolveTarget(
       return {
         target,
         ownerId: row.userId,
+        ownerUsername: row.user.username,
         // Une fiche de suivi sans critique n'est pas un objet social : on ne
         // commente pas un statut, seulement un écrit.
         hidden: row.hiddenAt !== null || !row.reviewText,
