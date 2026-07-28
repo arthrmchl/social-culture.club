@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Field";
 import { CoverPlaceholder } from "@/components/CoverPlaceholder";
-import { MEDIA, formatYear } from "@/lib/media";
+import { MEDIA, formatYears } from "@/lib/media";
 import type { WorkType } from "@/generated/prisma/enums";
 
 export type ListItemRowData = {
@@ -15,6 +15,7 @@ export type ListItemRowData = {
   title: string;
   type: WorkType;
   year: number | null;
+  endYear: number | null;
   coverImageId: string | null;
   note: string | null;
 };
@@ -86,7 +87,7 @@ export function ListItemRow({
             {item.title}
           </Link>
           <p className="text-xs text-muted">
-            {MEDIA[item.type].emoji} {formatYear(item.year)}
+            {MEDIA[item.type].emoji} {formatYears(item)}
           </p>
         </div>
 

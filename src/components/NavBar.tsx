@@ -28,14 +28,13 @@ const ITEMS: NavItem[] = [
 
 /**
  * Entrées du bureau uniquement : la barre mobile est pleine, elles sont
- * atteignables au téléphone depuis `/profil` (règle du lot 2, étendue au 3).
+ * atteignables au téléphone depuis `/profil`.
  */
 const DESKTOP_ONLY: { href: string; label: string; adminOnly?: boolean }[] = [
   { href: "/fil", label: "Fil" },
   { href: "/decouvrir", label: "Découvrir" },
   { href: "/catalogue", label: "Catalogue" },
   { href: "/listes", label: "Listes" },
-  { href: "/import", label: "Importer" },
   { href: "/invitations", label: "Invitations", adminOnly: true },
   { href: "/moderation", label: "Modération", adminOnly: true },
 ];

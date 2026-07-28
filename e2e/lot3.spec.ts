@@ -126,32 +126,38 @@ test("met une œuvre en favori de profil", async () => {
   await expect(page.locator('a[href^="/oeuvre/"]').first()).toBeVisible();
 });
 
-test("crée une intégrale et marque les tomes qu'elle couvre", async () => {
+test("crée une intégrale et la marque lue d'un coup", async () => {
   await page.goto("/catalogue?type=MANGA_SERIES");
   await page.locator('a[href^="/oeuvre/"]').first().click();
 
+  // Une intégrale n'est plus qu'une édition à peu de volumes (lot 6) : elle
+  // déclare ses trois tomes, et « j'ai lu cette édition » les marque tous.
   await expect(page.getByText("Éditions")).toBeVisible();
   await page.getByRole("button", { name: "Ajouter une édition" }).click();
   await page.fill("#ed-publisher", "Glénat");
-  await page.fill("#ed-from", "1");
-  await page.fill("#ed-to", "3");
+  await page.selectOption("#ed-format", "intégrale");
+  await page.fill("#ed-tomes", "3");
   await page.getByRole("button", { name: "Ajouter", exact: true }).click();
 
-  const omnibus = page.getByRole("button", {
-    name: "J'ai lu cette intégrale",
+  // La fiche a déjà une édition : on vise la carte de l'intégrale, sans quoi
+  // les boutons répétés d'une carte à l'autre désigneraient l'autre tirage.
+  const carte = page.getByRole("group", { name: /intégrale/ });
+  await expect(carte).toBeVisible({ timeout: 10000 });
+
+  // Le suivi au tome se lit dans le tirage qu'on désigne.
+  await carte.getByRole("button", { name: "Je lis celle-ci" }).click();
+  await expect(carte.getByText("je lis celle-ci")).toBeVisible({
+    timeout: 10000,
   });
-  await expect(omnibus.first()).toBeVisible({ timeout: 10000 });
-  await omnibus.first().click();
+
+  const lue = carte.getByRole("button", { name: "J'ai lu cette édition" });
+  await lue.click();
   // Attendre la fin de la transition avant de recharger : le clic rend la main
   // avant l'aller-retour serveur, et un `reload()` immédiat l'interrompt.
-  await expect(omnibus.first()).toBeEnabled();
+  await expect(lue).toBeEnabled();
 
-  // Les trois premiers tomes passent à « lu ».
   await page.reload();
-  // On vise le compteur de progression, et non le libellé de l'intégrale :
-  // chaque exécution ajoute une édition sans nettoyer la précédente, si bien
-  // que « Tomes 1 à 3 » finit par apparaître plusieurs fois.
-  await expect(page.getByText(/\d+\/\d+ tomes lus/)).toBeVisible();
+  await expect(page.getByText("3/3 tomes lus")).toBeVisible();
 });
 
 test("pose un objectif annuel et voit sa progression", async () => {

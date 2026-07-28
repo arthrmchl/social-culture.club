@@ -2,7 +2,6 @@ import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import type { WorkStatusState } from "@/generated/prisma/enums";
 import { computeSeriesAutoState, computeTomesAutoState } from "./progress";
-import { coveredTomeNumbers } from "./editions";
 
 // Aides serveur partagées par les server actions du suivi (lot 1).
 // À exécuter dans la même transaction que la mutation qui les déclenche.
@@ -71,33 +70,53 @@ export async function recomputeSeriesState(
   );
 }
 
-/** Recalcule le statut d'une série BD/manga d'après les tomes lus (L4). */
+/**
+ * Recalcule le statut d'une série BD/manga d'après les tomes lus (L4).
+ *
+ * Le décompte se fait contre **l'édition que je lis** (lot 6) : un tome n'existe
+ * que dans un tirage, et 12/14 en Deluxe n'est pas 12/41 chez Glénat. Sans
+ * édition désignée il n'y a rien à compter — et rien n'a pu être coché.
+ */
 export async function recomputeTomesState(
   tx: Tx,
   userId: string,
   workId: string,
 ): Promise<void> {
-  const total = await tx.tome.count({ where: { workId } });
+  const uw = await tx.userWork.findUnique({
+    where: { userId_workId: { userId, workId } },
+    select: { editionId: true },
+  });
+  const editionId = uw?.editionId ?? null;
+  if (!editionId) {
+    await applyAutoState(tx, userId, workId, computeTomesAutoState(0, 0));
+    return;
+  }
+
+  const total = await tx.tome.count({ where: { editionId } });
   const read = await tx.tomeProgress.count({
-    where: { userId, tome: { workId }, state: "READ" },
+    where: { userId, tome: { editionId }, state: "READ" },
   });
   await applyAutoState(tx, userId, workId, computeTomesAutoState(read, total));
 }
 
 /**
- * Lire une intégrale marque comme lus les tomes qu'elle couvre (L6, D8).
+ * Lire une édition d'un coup marque tous ses tomes comme lus (L6, D8).
+ *
+ * C'est le geste de l'intégrale du lot 3, généralisé : depuis que les tomes
+ * appartiennent à leur tirage (lot 6), une intégrale n'est plus qu'une édition
+ * à peu de volumes, et « j'ai tout lu » vaut pour n'importe laquelle.
  *
  * Seuls des `TomeProgress` sont écrits, jamais une entrée de journal par
- * tome : le journal garde la seule entrée de l'intégrale, sans quoi
+ * tome : le journal garde la seule entrée de l'édition, sans quoi
  * `recomputeViewings` compterait cinq lectures pour une.
  *
  * Idempotent — `createMany({ skipDuplicates: true })` adossé à
  * `@@unique([userId, tomeId])`, comme le reste du suivi au tome.
  *
- * Renvoie le nombre de tomes concernés (0 si l'édition n'est pas une
- * intégrale, ou si elle ne relève pas de cette œuvre).
+ * Renvoie le nombre de tomes concernés (0 si l'édition n'a pas de tome, ou si
+ * elle ne relève pas de cette œuvre).
  */
-export async function applyEditionCoverage(
+export async function markEditionTomesRead(
   tx: Tx,
   userId: string,
   workId: string,
@@ -105,25 +124,16 @@ export async function applyEditionCoverage(
 ): Promise<number> {
   const edition = await tx.edition.findUnique({
     where: { id: editionId },
-    select: {
-      workId: true,
-      tome: { select: { workId: true } },
-      coversTomeFrom: true,
-      coversTomeTo: true,
-    },
+    select: { workId: true },
   });
   if (!edition) return 0;
 
   // Garde d'appartenance : une édition rattachée à une autre œuvre ne doit
   // rien pouvoir marquer ici, même si son identifiant est passé à la main.
-  const owner = edition.workId ?? edition.tome?.workId ?? null;
-  if (owner !== workId) return 0;
-
-  const numbers = coveredTomeNumbers(edition);
-  if (numbers.length === 0) return 0;
+  if (edition.workId !== workId) return 0;
 
   const tomes = await tx.tome.findMany({
-    where: { workId, number: { in: numbers } },
+    where: { editionId },
     select: { id: true },
   });
   if (tomes.length === 0) return 0;

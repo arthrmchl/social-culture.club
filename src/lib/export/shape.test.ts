@@ -48,10 +48,11 @@ describe("isCsvEntity", () => {
 describe("contrat du document", () => {
   it("annonce son format et sa version", () => {
     expect(EXPORT_FORMAT).toBe("social-culture.club");
-    // Version 5 depuis le retrait des citations : chaque entité qui apparaît
-    // ou disparaît fait bouger le numéro, sans quoi un export récent serait
-    // indiscernable d'un export où l'utilisateur n'avait rien saisi.
-    expect(EXPORT_VERSION).toBe(5);
+    // Version 6 depuis le lot 6 : les tomes sont passés sous l'édition et
+    // l'import a quitté le document. Chaque entité qui apparaît ou disparaît
+    // fait bouger le numéro, sans quoi un export récent serait indiscernable
+    // d'un export où l'utilisateur n'avait rien saisi.
+    expect(EXPORT_VERSION).toBe(6);
   });
 
   it("nomme chaque entité exportable en français", () => {

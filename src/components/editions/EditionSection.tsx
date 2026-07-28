@@ -5,7 +5,7 @@ import {
   createEdition,
   deleteEdition,
   editEdition,
-  markOmnibusRead,
+  markEditionRead,
   setDefaultEdition,
   setMyEdition,
 } from "@/actions/edition";
@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CoverUpload } from "@/components/CoverUpload";
 import { Input, Label, Select } from "@/components/ui/Field";
-import { editionLabel, isOmnibus, omnibusLabel } from "@/lib/editions";
+import { editionLabel } from "@/lib/editions";
 import { LANGUAGES } from "@/lib/languages";
 
 export type EditionData = {
@@ -25,10 +25,10 @@ export type EditionData = {
   publisher: string | null;
   format: string | null;
   isDefault: boolean;
-  coversTomeFrom: number | null;
-  coversTomeTo: number | null;
   coverImageId: string | null;
   translators: string[];
+  /** Le nombre de volumes de ce tirage (lot 6) — 0 pour un livre. */
+  tomeCount: number;
 };
 
 /** La saisie, toujours en chaînes : un seul état plutôt que dix `useState`. */
@@ -40,8 +40,7 @@ type Draft = {
   format: string;
   pageCount: string;
   isbn: string;
-  from: string;
-  to: string;
+  tomeCount: string;
   coverImageId: string | null;
 };
 
@@ -53,8 +52,7 @@ const EMPTY: Draft = {
   format: "",
   pageCount: "",
   isbn: "",
-  from: "",
-  to: "",
+  tomeCount: "",
   coverImageId: null,
 };
 
@@ -67,31 +65,33 @@ function draftOf(e: EditionData): Draft {
     format: e.format ?? "",
     pageCount: e.pageCount ? String(e.pageCount) : "",
     isbn: e.isbn ?? "",
-    from: e.coversTomeFrom ? String(e.coversTomeFrom) : "",
-    to: e.coversTomeTo ? String(e.coversTomeTo) : "",
+    tomeCount: e.tomeCount ? String(e.tomeCount) : "",
     coverImageId: e.coverImageId,
   };
 }
 
 /**
  * Éditions d'une œuvre (L6, D8) : la liste, l'édition par défaut, l'édition
- * que je lis, et la lecture d'une intégrale.
+ * que je lis, ses tomes, et la lecture de l'édition entière.
  *
- * Depuis le lot 5, l'édition porte aussi ce qui décrit l'objet publié — titre,
- * langue, traducteurs, couverture — que la fiche d'œuvre ne connaît plus.
+ * Depuis le lot 5, l'édition porte ce qui décrit l'objet publié — titre, langue,
+ * traducteurs, couverture — que la fiche d'œuvre ne connaît plus ; depuis le
+ * lot 6, ses **tomes** aussi. Une intégrale n'est donc plus une étendue
+ * déclarée sur la série : c'est une édition à peu de volumes.
  */
 export function EditionSection({
   workId,
   editions,
   myEditionId,
   canEdit,
-  hasTomes,
+  showTomes,
 }: {
   workId: string;
   editions: EditionData[];
   myEditionId: string | null;
   canEdit: boolean;
-  hasTomes: boolean;
+  /** Média suivi au tome : le tirage déclare alors son nombre de volumes. */
+  showTomes: boolean;
 }) {
   // `null` : aucun formulaire ouvert. `"new"` : création. Sinon l'id modifié.
   const [open, setOpen] = useState<string | null>(null);
@@ -128,8 +128,7 @@ export function EditionSection({
       format: draft.format,
       pageCount: draft.pageCount || undefined,
       isbn: draft.isbn,
-      coversTomeFrom: draft.from || undefined,
-      coversTomeTo: draft.to || undefined,
+      tomeCount: showTomes ? draft.tomeCount || "0" : undefined,
       coverImageId: draft.coverImageId ?? "",
     };
     run(async () => {
@@ -147,7 +146,15 @@ export function EditionSection({
       {editions.length > 0 && (
         <div className="flex flex-col gap-2">
           {editions.map((e) => (
-            <Card key={e.id} className="flex flex-wrap items-center gap-3 p-3">
+            // Chaque édition est un groupe nommé : « Je lis celle-ci » et
+            // « J'ai lu cette édition » se répètent d'une carte à l'autre, et
+            // rien d'autre ne dirait de quel tirage il s'agit.
+            <Card
+              key={e.id}
+              role="group"
+              aria-label={editionLabel(e, e.tomeCount)}
+              className="flex flex-wrap items-center gap-3 p-3"
+            >
               {e.coverImageId && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -158,7 +165,7 @@ export function EditionSection({
               )}
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium">
-                  {editionLabel(e)}
+                  {editionLabel(e, e.tomeCount)}
                   {e.isDefault && (
                     <span className="ml-2 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted">
                       par défaut
@@ -171,10 +178,7 @@ export function EditionSection({
                   )}
                 </p>
                 <p className="text-xs text-muted">
-                  {isOmnibus(e)
-                    ? `Intégrale · ${omnibusLabel(e)}`
-                    : "Édition simple"}
-                  {e.isbn ? ` · ISBN ${e.isbn}` : ""}
+                  {e.isbn ? `ISBN ${e.isbn}` : "Édition"}
                   {e.translators.length > 0
                     ? ` · Traduction de ${e.translators.join(", ")}`
                     : ""}
@@ -192,15 +196,15 @@ export function EditionSection({
                     Je lis celle-ci
                   </Button>
                 )}
-                {isOmnibus(e) && hasTomes && (
+                {e.tomeCount > 0 && (
                   <Button
                     variant="secondary"
                     size="sm"
                     disabled={pending}
-                    title="Consigne une lecture et marque les tomes couverts comme lus"
-                    onClick={() => run(() => markOmnibusRead(e.id))}
+                    title="Consigne une lecture et marque tous les tomes de ce tirage comme lus"
+                    onClick={() => run(() => markEditionRead(e.id))}
                   >
-                    J&apos;ai lu cette intégrale
+                    J&apos;ai lu cette édition
                   </Button>
                 )}
                 {canEdit && !e.isDefault && (
@@ -218,7 +222,7 @@ export function EditionSection({
                     variant="ghost"
                     size="sm"
                     disabled={pending}
-                    aria-label={`Modifier l'édition ${editionLabel(e)}`}
+                    aria-label={`Modifier l'édition ${editionLabel(e, e.tomeCount)}`}
                     onClick={() => openEdit(e)}
                   >
                     Modifier
@@ -229,7 +233,7 @@ export function EditionSection({
                     variant="ghost"
                     size="sm"
                     disabled={pending}
-                    aria-label={`Supprimer l'édition ${editionLabel(e)}`}
+                    aria-label={`Supprimer l'édition ${editionLabel(e, e.tomeCount)}`}
                     onClick={() => run(() => deleteEdition(e.id))}
                   >
                     ✕
@@ -362,34 +366,23 @@ export function EditionSection({
               </div>
             </div>
 
-            {hasTomes && (
+            {showTomes && (
               <div className="flex flex-wrap items-end gap-3">
-                <div className="w-32">
-                  <Label htmlFor="ed-from">Intégrale, du tome</Label>
+                <div className="w-36">
+                  <Label htmlFor="ed-tomes">Nombre de tomes</Label>
                   <Input
-                    id="ed-from"
+                    id="ed-tomes"
                     type="number"
-                    min={1}
-                    value={draft.from}
+                    min={0}
+                    value={draft.tomeCount}
                     onChange={(e) =>
-                      setDraft((d) => ({ ...d, from: e.target.value }))
-                    }
-                  />
-                </div>
-                <div className="w-32">
-                  <Label htmlFor="ed-to">au tome</Label>
-                  <Input
-                    id="ed-to"
-                    type="number"
-                    min={1}
-                    value={draft.to}
-                    onChange={(e) =>
-                      setDraft((d) => ({ ...d, to: e.target.value }))
+                      setDraft((d) => ({ ...d, tomeCount: e.target.value }))
                     }
                   />
                 </div>
                 <p className="text-xs text-muted">
-                  Laissez vide pour une édition simple.
+                  Les volumes de ce tirage : 41 chez l&apos;un, 14 en édition
+                  deluxe. C&apos;est sur eux que porte le suivi.
                 </p>
               </div>
             )}

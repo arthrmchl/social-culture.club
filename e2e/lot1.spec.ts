@@ -38,7 +38,6 @@ async function createWork(opts: {
   type?: RegExp; // libellé du bouton de type
   seasons?: string;
   episodes?: string;
-  tomes?: string;
 }) {
   await page.goto("/creer");
   if (opts.type) await page.getByRole("button", { name: opts.type }).click();
@@ -52,7 +51,6 @@ async function createWork(opts: {
   }
   if (opts.seasons) await page.fill("#seasonsCount", opts.seasons);
   if (opts.episodes) await page.fill("#episodesPerSeason", opts.episodes);
-  if (opts.tomes) await page.fill("#tomesCount", opts.tomes);
   await page.getByRole("button", { name: "Créer la fiche" }).click();
   await expect(page).toHaveURL(/\/oeuvre\/.+/);
 }
@@ -62,10 +60,16 @@ async function createWork(opts: {
  * (sans quoi la progression à la page reste fermée — lot 5), et attend que
  * l'écran l'ait enregistré.
  */
-async function addEdition(opts: { publisher: string; pages?: string }) {
+async function addEdition(opts: {
+  publisher: string;
+  pages?: string;
+  tomes?: string;
+}) {
   await page.getByRole("button", { name: "Ajouter une édition" }).click();
   await page.fill("#ed-publisher", opts.publisher);
   if (opts.pages) await page.fill("#ed-pages", opts.pages);
+  // Les tomes appartiennent au tirage (lot 6) : c'est ici qu'ils se déclarent.
+  if (opts.tomes) await page.fill("#ed-tomes", opts.tomes);
   await page.getByRole("button", { name: "Ajouter", exact: true }).click();
   await expect(page.getByText("par défaut").first()).toBeVisible({
     timeout: 10000,
@@ -123,13 +127,12 @@ test("série : marquage d'une saison → statut « à jour »", async () => {
   await expect(page.locator("select")).toHaveValue("CAUGHT_UP");
 });
 
-test("manga : suivi au tome", async () => {
-  await createWork({
-    title: MANGA,
-    year: "1990",
-    type: /Manga/,
-    tomes: "3",
-  });
+test("manga : suivi au tome, dans le tirage désigné", async () => {
+  await createWork({ title: MANGA, year: "1990", type: /Manga/ });
+
+  // Sans édition, rien à cocher : le tome n'existe que dans un tirage (lot 6).
+  await expect(page.getByText("Progression — tomes")).toHaveCount(0);
+  await addEdition({ publisher: "Glénat", tomes: "3" });
 
   await expect(page.getByText("0/3 tome lu")).toBeVisible();
   // à lire → en cours → lu (deux clics).

@@ -3,7 +3,7 @@ import { CoverPlaceholder } from "@/components/CoverPlaceholder";
 import { Card } from "@/components/ui/Card";
 import { StarDisplay } from "@/components/Stars";
 import { TagPills } from "@/components/tags/TagPills";
-import { MEDIA, formatYear } from "@/lib/media";
+import { MEDIA, formatYears } from "@/lib/media";
 import { stateLabel } from "@/lib/status";
 import type { WorkStatusState, WorkType } from "@/generated/prisma/enums";
 
@@ -12,6 +12,7 @@ export type WorkRowData = {
   type: WorkType;
   titleFr: string;
   year: number | null;
+  endYear: number | null;
   coverImageId: string | null;
   state: WorkStatusState | null;
   rating: number | null;
@@ -53,7 +54,7 @@ export function WorkRow({ work }: { work: WorkRowData }) {
           {work.titleFr}
         </Link>
         <p className="text-xs text-muted">
-          {MEDIA[work.type].emoji} {formatYear(work.year)}
+          {MEDIA[work.type].emoji} {formatYears(work)}
           {work.state ? ` · ${stateLabel(work.type, work.state)}` : ""}
         </p>
         {work.tags.length > 0 && (

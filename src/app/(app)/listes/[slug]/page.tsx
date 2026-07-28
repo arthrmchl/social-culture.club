@@ -41,6 +41,7 @@ export default async function ListePage({
               titleFr: true,
               type: true,
               year: true,
+              endYear: true,
               coverImageId: true,
             },
           },
@@ -61,6 +62,7 @@ export default async function ListePage({
     title: i.work.titleFr,
     type: i.work.type,
     year: i.work.year,
+    endYear: i.work.endYear,
     coverImageId: covers.get(i.work.id),
   }));
 

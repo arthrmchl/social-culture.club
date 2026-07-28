@@ -37,6 +37,7 @@ export default async function TagPage({
             titleFr: true,
             titleOriginal: true,
             year: true,
+            endYear: true,
             coverImageId: true,
             needsCompletion: true,
           },

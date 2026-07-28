@@ -8,7 +8,8 @@ import {
   usesTomes,
   usesPages,
   isReading,
-  formatYear,
+  creatorsLabel,
+  formatYears,
 } from "@/lib/media";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -66,11 +67,11 @@ export default async function OeuvrePage({
         orderBy: { number: "asc" },
         include: { episodes: { orderBy: { number: "asc" } } },
       },
-      tomes: { orderBy: { number: "asc" } },
       editions: {
         orderBy: { createdAt: "asc" },
         include: {
           creators: { include: { person: { select: { name: true } } } },
+          tomes: { orderBy: { number: "asc" } },
         },
       },
       createdBy: { select: { name: true } },
@@ -97,7 +98,7 @@ export default async function OeuvrePage({
       select: { episodeId: true },
     }),
     db.tomeProgress.findMany({
-      where: { userId: user.id, tome: { workId: id } },
+      where: { userId: user.id, tome: { edition: { workId: id } } },
       select: { tomeId: true, state: true },
     }),
     db.userSeason.findMany({
@@ -187,11 +188,7 @@ export default async function OeuvrePage({
     reviewHasSpoiler: userSeasonMap.get(s.id)?.reviewHasSpoiler ?? false,
   }));
 
-  const tomeItems = work.tomes.map((t) => ({
-    id: t.id,
-    number: t.number,
-    state: tomeStateMap.get(t.id) ?? null,
-  }));
+
 
   const journalEntries: JournalEntryCardData[] = entries.map((e) => ({
     id: e.id,
@@ -218,6 +215,7 @@ export default async function OeuvrePage({
   const editionItems: EditionData[] = work.editions.map((e) => ({
     ...e,
     translators: e.creators.map((c) => c.person.name),
+    tomeCount: e.tomes.length,
   }));
   // L'en-tête annonce la pagination de référence (mon édition, sinon celle par
   // défaut) : c'est une information de catalogue. Le suivi, lui, exige que
@@ -225,6 +223,13 @@ export default async function OeuvrePage({
   const readingPageCount = pageCountFor(work.editions, userWork?.editionId);
   const myEdition =
     work.editions.find((e) => e.id === userWork?.editionId) ?? null;
+  // Le suivi au tome se fait dans un tirage précis (lot 6) : ceux affichés sont
+  // ceux de l'édition que je lis, pas une numérotation flottante de la série.
+  const tomeItems = (myEdition?.tomes ?? []).map((t) => ({
+    id: t.id,
+    number: t.number,
+    state: tomeStateMap.get(t.id) ?? null,
+  }));
   const originalLanguage = languageLabel(work.originalLanguage);
   const tags = workTags.map((wt) => wt.tag);
 
@@ -275,7 +280,7 @@ export default async function OeuvrePage({
             <p className="text-muted">{work.titleOriginal}</p>
           )}
           <p className="mt-1 text-sm text-muted">
-            {formatYear(work.year)}
+            {formatYears(work)}
             {work.durationMinutes ? ` · ${work.durationMinutes} min` : ""}
             {readingPageCount ? ` · ${readingPageCount} pages` : ""}
             {originalLanguage ? ` · ${originalLanguage}` : ""}
@@ -283,9 +288,7 @@ export default async function OeuvrePage({
 
           {work.creators.length > 0 && (
             <p className="mt-3 text-sm">
-              <span className="text-muted">
-                {work.type === "BOOK" ? "Auteur·rice(s) : " : "Créateurs : "}
-              </span>
+              <span className="text-muted">{creatorsLabel(work.type)} : </span>
               {work.creators.map((c) => c.person.name).join(", ")}
             </p>
           )}
@@ -392,7 +395,7 @@ export default async function OeuvrePage({
             editions={editionItems}
             myEditionId={userWork?.editionId ?? null}
             canEdit={canEdit}
-            hasTomes={work.tomes.length > 0}
+            showTomes={usesTomes(work.type)}
           />
         </section>
       )}
@@ -439,10 +442,39 @@ export default async function OeuvrePage({
         </section>
       )}
 
-      {usesTomes(work.type) && work.tomes.length > 0 && (
+      {/*
+        Suivi au tome : même règle qu'à la page (lot 6). Un tome n'existe que
+        dans un tirage — sans édition décrite il n'y a rien à cocher, et sans
+        édition désignée on ne saurait pas de quels volumes il s'agit.
+      */}
+      {usesTomes(work.type) && work.editions.length > 0 && (
         <section>
           <SectionTitle>Progression — tomes</SectionTitle>
-          <TomeTracker tomes={tomeItems} />
+          {myEdition ? (
+            <div className="flex flex-col gap-2">
+              <p className="text-xs text-muted">
+                Édition lue : {editionLabel(myEdition, myEdition.tomes.length)}
+              </p>
+              {tomeItems.length > 0 ? (
+                <TomeTracker tomes={tomeItems} />
+              ) : (
+                <Card className="p-4 text-sm text-muted">
+                  Cette édition n&apos;a pas encore de tomes — déclarez-en le
+                  nombre depuis la section Éditions.
+                </Card>
+              )}
+            </div>
+          ) : (
+            <Card className="p-4">
+              <p className="text-sm text-muted">
+                Désignez l&apos;édition que vous lisez pour suivre vos tomes —{" "}
+                <a href="#editions" className="text-accent hover:underline">
+                  choisir mon édition
+                </a>
+                .
+              </p>
+            </Card>
+          )}
         </section>
       )}
 

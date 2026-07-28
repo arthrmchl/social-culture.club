@@ -26,6 +26,7 @@ export default async function ProfilPage() {
             titleFr: true,
             type: true,
             year: true,
+            endYear: true,
             coverImageId: true,
           },
         },
@@ -173,12 +174,6 @@ export default async function ProfilPage() {
           Mes données
         </h2>
         <Card className="flex flex-col divide-y divide-border p-0">
-          <Link href="/import" className="px-4 py-3 text-sm hover:bg-elevated">
-            📥 Importer mon historique
-            <span className="block text-xs text-muted">
-              Letterboxd, Serializd, lectures
-            </span>
-          </Link>
           <Link href="/donnees" className="px-4 py-3 text-sm hover:bg-elevated">
             📤 Exporter mes données
             <span className="block text-xs text-muted">

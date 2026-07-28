@@ -3,7 +3,7 @@ import { FeedCard } from "@/components/social/FeedCard";
 import { MemberList } from "@/components/social/MemberList";
 import { PublicWorkCover } from "@/components/social/PublicWorkGrid";
 import { EmptyState } from "@/components/ui/Card";
-import { formatYear } from "@/lib/media";
+import { formatYears } from "@/lib/media";
 import { requireUser } from "@/lib/session";
 import { getDiscoverData, RECENT_DAYS, type PopularWork } from "@/lib/social/discover";
 import { getFeed } from "@/lib/social/feed-query";
@@ -116,7 +116,7 @@ function PopularSection({
               <PublicWorkCover work={work} />
               <p className="mt-1 truncate text-[11px]">{work.titleFr}</p>
               <p className="truncate text-[11px] text-muted">
-                {count} {unit} · {formatYear(work.year)}
+                {count} {unit} · {formatYears(work)}
               </p>
             </li>
           ))}

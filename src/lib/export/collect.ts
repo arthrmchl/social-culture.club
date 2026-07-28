@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { scoreToStars } from "@/lib/rating";
-import { editionLabel, omnibusLabel } from "@/lib/editions";
+import { editionLabel } from "@/lib/editions";
 import { resolveCovers } from "@/lib/cover-loader";
 import { scopeLabel } from "@/lib/goals";
 import { toCsv, type CsvColumn } from "./csv";
@@ -34,7 +34,6 @@ export async function collectUserExport(
     watches,
     tomes,
     reading,
-    imports,
     lists,
     tags,
     favorites,
@@ -77,21 +76,18 @@ export async function collectUserExport(
     }),
     db.tomeProgress.findMany({
       where: { userId },
-      include: { tome: { select: { number: true, workId: true } } },
+      include: {
+        tome: {
+          select: {
+            number: true,
+            edition: { select: { workId: true, title: true, publisher: true } },
+          },
+        },
+      },
     }),
     db.readingProgress.findMany({
       where: { userId },
       orderBy: { recordedAt: "asc" },
-    }),
-    db.importBatch.findMany({
-      where: { userId },
-      select: {
-        id: true,
-        source: true,
-        status: true,
-        createdAt: true,
-        files: { select: { name: true, checksum: true, bytes: true } },
-      },
     }),
     db.list.findMany({
       where: { userId },
@@ -178,7 +174,7 @@ export async function collectUserExport(
     ...reading.map((r) => r.workId),
     ...userSeasons.map((s) => s.season.workId),
     ...watches.map((w) => w.episode.season.workId),
-    ...tomes.map((t) => t.tome.workId),
+    ...tomes.map((t) => t.tome.edition.workId),
     ...lists.flatMap((l) => l.items.map((i) => i.workId)),
     ...tags.flatMap((t) => t.works.map((w) => w.workId)),
     ...favorites.map((f) => f.workId),
@@ -263,7 +259,10 @@ export async function collectUserExport(
       watchedAt: iso(w.watchedAt),
     })),
     tomeProgress: tomes.map((t) => ({
-      workId: t.tome.workId,
+      workId: t.tome.edition.workId,
+      // Le tome n'a de sens que dans son tirage (lot 6) : le CSV le nomme,
+      // sinon deux « tome 3 » d'éditions différentes seraient indiscernables.
+      edition: editionLabel(t.tome.edition),
       tomeNumber: t.tome.number,
       state: t.state,
     })),
@@ -272,13 +271,6 @@ export async function collectUserExport(
       page: r.page,
       percent: r.percent,
       recordedAt: r.recordedAt.toISOString(),
-    })),
-    imports: imports.map((b) => ({
-      id: b.id,
-      source: b.source,
-      status: b.status,
-      createdAt: b.createdAt.toISOString(),
-      files: b.files,
     })),
     // Une liste vide reste dans l'export : c'est une intention, pas un vide.
     lists: lists.map((l) => ({
@@ -405,11 +397,11 @@ async function collectWorks(ids: string[], userId: string) {
           orderBy: { number: "asc" },
           include: { _count: { select: { episodes: true } } },
         },
-        tomes: { orderBy: { number: "asc" } },
         editions: {
           orderBy: { createdAt: "asc" },
           include: {
             creators: { include: { person: { select: { name: true } } } },
+            tomes: { orderBy: { number: "asc" } },
           },
         },
       },
@@ -427,6 +419,7 @@ async function collectWorks(ids: string[], userId: string) {
         titleOriginal: w.titleOriginal,
         originalLanguage: w.originalLanguage,
         year: w.year,
+        endYear: w.endYear,
         synopsis: w.synopsis,
         durationMinutes: w.durationMinutes,
         needsCompletion: w.needsCompletion,
@@ -440,13 +433,8 @@ async function collectWorks(ids: string[], userId: string) {
           title: s.title,
           episodes: s._count.episodes,
         })),
-        tomes: w.tomes.map((t) => ({
-          number: t.number,
-          title: t.title,
-          pageCount: t.pageCount,
-        })),
         editions: w.editions.map((e) => ({
-          label: editionLabel(e),
+          label: editionLabel(e, e.tomes.length),
           title: e.title,
           language: e.language,
           translators: e.creators.map((c) => c.person.name),
@@ -455,8 +443,11 @@ async function collectWorks(ids: string[], userId: string) {
           isbn: e.isbn,
           pageCount: e.pageCount,
           isDefault: e.isDefault,
-          coversTomeFrom: e.coversTomeFrom,
-          coversTomeTo: e.coversTomeTo,
+          tomes: e.tomes.map((t) => ({
+            number: t.number,
+            title: t.title,
+            pageCount: t.pageCount,
+          })),
         })),
         coverUrl: covers.get(w.id) ? `/api/uploads/${covers.get(w.id)}` : null,
       });
@@ -496,6 +487,7 @@ export function entityToCsv(doc: ExportedDocument, entity: CsvEntity): string {
         col("Titre", (w) => w.titleFr),
         col("Titre original", (w) => w.titleOriginal),
         col("Année", (w) => w.year),
+        col("Année de fin", (w) => w.endYear),
         col("Créateurs", (w) => w.creators.map((c) => c.name).join(" ; ")),
         col("Genres", (w) => w.genres.join(" ; ")),
         col("Durée (min)", (w) => w.durationMinutes),
@@ -536,6 +528,7 @@ export function entityToCsv(doc: ExportedDocument, entity: CsvEntity): string {
     case "tomes":
       return toCsv(doc.tomeProgress as TomeRow[], [
         col("Œuvre", titre),
+        col("Édition", (r) => r.edition),
         col("Tome", (r) => r.tomeNumber),
         col("État", (r) => r.state),
       ]);
@@ -612,7 +605,7 @@ export function entityToCsv(doc: ExportedDocument, entity: CsvEntity): string {
         col("ISBN", (r) => r.isbn),
         col("Pages", (r) => r.pageCount),
         col("Par défaut", (r) => r.isDefault),
-        col("Tomes couverts", (r) => r.covers),
+        col("Tomes", (r) => r.tomeCount),
       ]);
 
     // ── Social (lot 4) ────────────────────────────────────────
@@ -719,7 +712,7 @@ function flattenEditions(works: ExportedDocument["works"]): FlatEditionRow[] {
       isbn: e.isbn,
       pageCount: e.pageCount,
       isDefault: e.isDefault,
-      covers: omnibusLabel(e),
+      tomeCount: e.tomes.length,
     })),
   );
 }
@@ -764,7 +757,12 @@ type WatchRow = {
   episodeNumber: number;
   watchedAt: string | null;
 };
-type TomeRow = { workId: string; tomeNumber: number; state: string };
+type TomeRow = {
+  workId: string;
+  edition: string;
+  tomeNumber: number;
+  state: string;
+};
 type ListRow = {
   title: string;
   description: string | null;
@@ -834,7 +832,7 @@ type FlatEditionRow = {
   isbn: string | null;
   pageCount: number | null;
   isDefault: boolean;
-  covers: string | null;
+  tomeCount: number;
 };
 type ReadingRow = {
   workId: string;

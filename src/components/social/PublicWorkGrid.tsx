@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { CoverPlaceholder } from "@/components/CoverPlaceholder";
-import { formatYear } from "@/lib/media";
+import { formatYears } from "@/lib/media";
 import type { PublicWork } from "@/lib/social/read";
 
 /**
@@ -21,7 +21,7 @@ export function PublicWorkCover({
     <Link
       href={`/oeuvre/${work.id}`}
       className={`group block ${className}`}
-      title={`${work.titleFr} — ${formatYear(work.year)}`}
+      title={`${work.titleFr} — ${formatYears(work)}`}
     >
       <div className="aspect-[2/3] overflow-hidden rounded-md border border-border bg-elevated">
         {work.coverImageId ? (

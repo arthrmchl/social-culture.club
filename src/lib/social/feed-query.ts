@@ -59,6 +59,7 @@ const WORK_SELECT = {
   type: true,
   titleFr: true,
   year: true,
+  endYear: true,
   coverImageId: true,
 } as const;
 

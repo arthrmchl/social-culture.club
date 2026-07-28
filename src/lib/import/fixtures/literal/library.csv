@@ -1,4 +1,0 @@
-id,title,author,isbn13,pageCount,publishedYear,rating,readingStatus,readingStartedAt,readingFinishedAt,review
-abc123,Le Nom du vent,Patrick Rothfuss,9782352944430,704,2007,4,FINISHED,2026-04-01,2026-04-20,"Belle plume."
-def456,Les Furtifs,Alain Damasio,9782358721141,704,2019,0,IS_READING,2026-07-10,,
-ghi789,Kafka sur le rivage,Haruki Murakami,9782264044631,618,2002,0,WANT_TO_READ,,,

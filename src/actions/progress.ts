@@ -192,12 +192,14 @@ export async function setTomeState(
   const parsed = tomeStateSchema.safeParse(state);
   if (!parsed.success) return { error: "État de tome invalide." };
 
+  // Un tome n'appartient plus à l'œuvre mais à son édition (lot 6) : c'est
+  // par elle qu'on remonte à la fiche à revalider.
   const tome = await db.tome.findUnique({
     where: { id: tomeId },
-    select: { workId: true },
+    select: { edition: { select: { workId: true } } },
   });
   if (!tome) return { error: "Tome introuvable." };
-  const { workId } = tome;
+  const workId = tome.edition.workId;
 
   await db.$transaction(async (tx) => {
     if (parsed.data === null) {

@@ -4,7 +4,15 @@ import { useActionState, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { detectDuplicates, type WorkFormState } from "@/actions/work";
 import type { DuplicateCandidate } from "@/lib/search";
-import { MEDIA, MEDIA_ORDER, formatYear, worksOwnCover } from "@/lib/media";
+import {
+  MEDIA,
+  MEDIA_ORDER,
+  creatorsLabel,
+  formatYears,
+  isSerial,
+  worksOwnCover,
+  yearLabels,
+} from "@/lib/media";
 import { LANGUAGES } from "@/lib/languages";
 import type { WorkType } from "@/generated/prisma/enums";
 import { Card } from "@/components/ui/Card";
@@ -19,6 +27,7 @@ export type WorkFormInitial = {
   titleOriginal?: string;
   originalLanguage?: string;
   year?: number;
+  endYear?: number;
   synopsis?: string;
   durationMinutes?: number;
   format?: string;
@@ -70,10 +79,11 @@ export function WorkForm({
 
   const media = MEDIA[type];
   const showEpisodes = media.subUnit === "episodes";
-  const showTomes = media.subUnit === "tomes";
   const isFilm = type === "FILM";
+  const isManga = type === "MANGA_SERIES";
   const isBook = type === "BOOK";
   const ownsCover = worksOwnCover(type);
+  const years = yearLabels(type);
 
   return (
     <form action={formAction} className="flex flex-col gap-6">
@@ -155,19 +165,36 @@ export function WorkForm({
               ))}
             </datalist>
           </div>
-          <div>
-            <Label htmlFor="year">
-              {isBook ? "Année de première publication" : "Année"}
-            </Label>
-            <Input
-              id="year"
-              name="year"
-              type="number"
-              inputMode="numeric"
-              value={year}
-              onChange={(e) => setYear(e.target.value)}
-              required
-            />
+          <div className="flex flex-wrap gap-4">
+            <div className="min-w-[12rem] flex-1">
+              <Label htmlFor="year">{years.start}</Label>
+              <Input
+                id="year"
+                name="year"
+                type="number"
+                inputMode="numeric"
+                value={year}
+                onChange={(e) => setYear(e.target.value)}
+                required
+              />
+            </div>
+            {/* Une série se publie sur une période : sa fin reste facultative,
+                et son absence déclare qu'elle se poursuit (lot 6). */}
+            {isSerial(type) && (
+              <div className="min-w-[12rem] flex-1">
+                <Label htmlFor="endYear">{years.end}</Label>
+                <Input
+                  id="endYear"
+                  name="endYear"
+                  type="number"
+                  inputMode="numeric"
+                  defaultValue={initial.endYear}
+                />
+                <FieldHint>
+                  Laisser vide si la publication est en cours.
+                </FieldHint>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -185,7 +212,7 @@ export function WorkForm({
                   href={`/oeuvre/${d.id}`}
                   className="text-accent hover:underline"
                 >
-                  {MEDIA[d.type].emoji} {d.titleFr} ({formatYear(d.year)})
+                  {MEDIA[d.type].emoji} {d.titleFr} ({formatYears(d)})
                 </Link>
               </li>
             ))}
@@ -240,17 +267,17 @@ export function WorkForm({
       </div>
 
       <div>
-        <Label htmlFor="creators">
-          {isBook ? "Auteur·rice(s)" : "Créateurs"}
-        </Label>
+        <Label htmlFor="creators">{creatorsLabel(type)}</Label>
         <Input
           id="creators"
           name="creators"
           defaultValue={initial.creators}
           placeholder={
-            isBook
-              ? "Autrice, auteur… (virgules)"
-              : "Réalisateur, autrice, dessinateur… (virgules)"
+            isManga
+              ? "Mangaka, autrice… (virgules)"
+              : isBook
+                ? "Autrice, auteur… (virgules)"
+                : "Réalisateur, autrice, dessinateur… (virgules)"
           }
         />
       </div>
@@ -293,23 +320,6 @@ export function WorkForm({
           <FieldHint>
             Ex. 1 saison de 12 épisodes. Modifiable ensuite.
           </FieldHint>
-        </Card>
-      )}
-
-      {mode === "create" && showTomes && (
-        <Card className="p-4">
-          <p className="mb-3 text-sm font-medium">Générer les tomes</p>
-          <div className="max-w-[10rem]">
-            <Label htmlFor="tomesCount">Nombre de tomes</Label>
-            <Input
-              id="tomesCount"
-              name="tomesCount"
-              type="number"
-              min={0}
-              defaultValue={1}
-            />
-          </div>
-          <FieldHint>Ex. série de 23 tomes ; 1 pour un one-shot.</FieldHint>
         </Card>
       )}
 
