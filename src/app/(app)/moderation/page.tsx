@@ -62,7 +62,25 @@ export default async function ModerationPage({
     },
   });
 
-  const openCount = await db.report.count({ where: { status: "OPEN" } });
+  const [openCount, corrections] = await Promise.all([
+    db.report.count({ where: { status: "OPEN" } }),
+    // D30 : l'administration voit toutes les propositions en attente, y
+    // compris celles dont le créateur ne s'occupe pas — c'est précisément le
+    // cas que le bouton « proposer une correction » doit couvrir (R8).
+    db.correctionSuggestion.findMany({
+      where: { status: "OPEN" },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      select: {
+        id: true,
+        field: true,
+        message: true,
+        createdAt: true,
+        author: { select: { name: true, username: true } },
+        work: { select: { id: true, titleFr: true } },
+      },
+    }),
+  ]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -72,6 +90,39 @@ export default async function ModerationPage({
           {openCount} signalement{openCount > 1 ? "s" : ""} en attente
         </p>
       </div>
+
+      {corrections.length > 0 && (
+        <section>
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
+            Propositions de correction ({corrections.length})
+          </h2>
+          <ul className="flex flex-col gap-2">
+            {corrections.map((c) => (
+              <li key={c.id}>
+                <Card className="p-3">
+                  <p className="text-xs text-muted">
+                    {c.author.name}
+                    {c.author.username && ` · @${c.author.username}`} ·{" "}
+                    {formatDate(c.createdAt)}
+                    {c.field && ` · ${c.field}`}
+                  </p>
+                  <p className="mt-1 text-sm">{c.message}</p>
+                  <Link
+                    href={`/oeuvre/${c.work.id}`}
+                    className="mt-1 inline-block text-xs text-accent"
+                  >
+                    {c.work.titleFr} →
+                  </Link>
+                </Card>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-muted">
+            Elles se traitent depuis la fiche concernée, là où l&apos;édition a
+            lieu.
+          </p>
+        </section>
+      )}
 
       {/* Onglets en liens : chaque état de la file est une URL. */}
       <nav aria-label="Filtrer la file" className="flex gap-2 text-sm">
