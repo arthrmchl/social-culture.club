@@ -9,6 +9,7 @@ import {
 } from "@/components/JournalEntryCard";
 import { requireUser } from "@/lib/session";
 import { db } from "@/lib/db";
+import { resolveCovers } from "@/lib/cover-loader";
 import { MEDIA, MEDIA_ORDER, usesPages } from "@/lib/media";
 import { ListCard } from "@/components/lists/ListCard";
 import { goalProgress, scopeEmoji, scopeLabel } from "@/lib/goals";
@@ -48,7 +49,14 @@ export default async function AccueilPage() {
               year: true,
               coverImageId: true,
               needsCompletion: true,
-              pageCount: true,
+              editions: {
+                select: {
+                  id: true,
+                  pageCount: true,
+                  isDefault: true,
+                  coverImageId: true,
+                },
+              },
             },
           },
         },
@@ -100,6 +108,21 @@ export default async function AccueilPage() {
     goals.map((g) => g.scope),
   );
 
+  // Une seule passe pour toutes les vignettes de la page : la couverture d'une
+  // lecture se résout sur ses éditions (lot 5), du point de vue de son lecteur.
+  const covers = await resolveCovers(
+    [
+      ...recent,
+      ...inProgress.map((uw) => uw.work),
+      ...recentEntries.map((e) => e.work),
+    ],
+    user.id,
+  );
+  const withCover = <T extends { id: string }>(w: T) => ({
+    ...w,
+    coverImageId: covers.get(w.id),
+  });
+
   const reads = inProgress.filter((uw) => usesPages(uw.work.type));
   const watching = inProgress.filter((uw) => !usesPages(uw.work.type));
   const entries: JournalEntryCardData[] = recentEntries.map((e) => ({
@@ -115,7 +138,7 @@ export default async function AccueilPage() {
     season: e.season,
     episode: e.episode,
     tome: e.tome,
-    work: e.work,
+    work: withCover(e.work),
   }));
 
   return (
@@ -161,29 +184,45 @@ export default async function AccueilPage() {
           <div className="flex flex-col gap-4">
             {reads.length > 0 && (
               <div className="flex flex-col gap-2">
-                {reads.map((uw) => (
-                  <Card
-                    key={uw.id}
-                    className="flex flex-wrap items-center justify-between gap-3 p-3"
-                  >
-                    <Link
-                      href={`/oeuvre/${uw.work.id}`}
-                      className="text-sm font-medium hover:text-accent"
+                {reads.map((uw) => {
+                  // Pas de saisie sans édition désignée (lot 5) : une page ne
+                  // veut rien dire tant qu'on ignore quel tirage est lu.
+                  const edition =
+                    uw.work.editions.find((e) => e.id === uw.editionId) ?? null;
+                  return (
+                    <Card
+                      key={uw.id}
+                      className="flex flex-wrap items-center justify-between gap-3 p-3"
                     >
-                      {MEDIA[uw.work.type].emoji} {uw.work.titleFr}
-                    </Link>
-                    <ReadingProgressWidget
-                      workId={uw.work.id}
-                      currentPage={uw.currentPage}
-                      currentPercent={uw.progressPercent}
-                      pageCount={uw.work.pageCount}
-                    />
-                  </Card>
-                ))}
+                      <Link
+                        href={`/oeuvre/${uw.work.id}`}
+                        className="text-sm font-medium hover:text-accent"
+                      >
+                        {MEDIA[uw.work.type].emoji} {uw.work.titleFr}
+                      </Link>
+                      {edition ? (
+                        <ReadingProgressWidget
+                          workId={uw.work.id}
+                          editionId={edition.id}
+                          currentPage={uw.currentPage}
+                          currentPercent={uw.progressPercent}
+                          pageCount={edition.pageCount}
+                        />
+                      ) : (
+                        <Link
+                          href={`/oeuvre/${uw.work.id}#editions`}
+                          className="text-sm text-accent hover:underline"
+                        >
+                          Préciser l&apos;édition lue
+                        </Link>
+                      )}
+                    </Card>
+                  );
+                })}
               </div>
             )}
             {watching.length > 0 && (
-              <WorkGrid works={watching.map((uw) => uw.work)} />
+              <WorkGrid works={watching.map((uw) => withCover(uw.work))} />
             )}
           </div>
         )}
@@ -300,7 +339,7 @@ export default async function AccueilPage() {
           Derniers ajouts au catalogue
         </h2>
         {recent.length > 0 ? (
-          <WorkGrid works={recent} />
+          <WorkGrid works={recent.map(withCover)} />
         ) : (
           <EmptyState
             title="Rien pour l'instant"

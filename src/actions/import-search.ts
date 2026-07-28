@@ -3,6 +3,7 @@
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { searchWorks } from "@/lib/search";
+import { resolveCovers } from "@/lib/cover-loader";
 import type { ImportCandidate } from "@/lib/import/match";
 
 /**
@@ -29,14 +30,15 @@ export async function searchCatalogue(query: string): Promise<ImportCandidate[]>
     byWork.set(c.workId, list);
   }
 
+  const covers = await resolveCovers(results);
+
   return results.map((r) => ({
     id: r.id,
     type: r.type,
     titleFr: r.titleFr,
     titleNormalized: r.titleFr,
     year: r.year,
-    isbn: null,
-    coverImageId: r.coverImageId,
+    coverImageId: covers.get(r.id),
     creators: byWork.get(r.id) ?? [],
     sim: r.sim,
   }));

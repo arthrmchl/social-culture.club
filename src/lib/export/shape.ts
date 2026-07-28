@@ -10,8 +10,7 @@
 export const EXPORT_FORMAT = "social-culture.club";
 
 /**
- * Version 2 (lot 3) : listes, étiquettes, favoris, citations, objectifs et
- * éditions. Le numéro change parce qu'un lecteur doit pouvoir distinguer
+ * Version 2 (lot 3) : listes, étiquettes, favoris, objectifs et éditions. Le numéro change parce qu'un lecteur doit pouvoir distinguer
  * « pas de listes parce que l'utilisateur n'en a pas » de « pas de listes
  * parce que c'est un export d'avant le lot 3 ».
  *
@@ -20,19 +19,30 @@ export const EXPORT_FORMAT = "social-culture.club";
  * qu'il a produit — un commentaire est un écrit au même titre qu'une critique.
  * Ce qui n'est pas exporté l'est délibérément : les notifications (dérivées des
  * gestes d'autrui) et les signalements (qui parlent d'un tiers).
+ *
+ * Version 4 (lot 5) : l'œuvre et l'édition sont enfin distinguées. `pageCount`
+ * et `isbn` quittent l'œuvre pour l'édition, qui gagne titre, langue et
+ * traducteurs ; l'œuvre gagne sa langue originale. Sans changement de version,
+ * un lecteur ne saurait pas si un livre sans ISBN vient d'un export antérieur
+ * ou d'une fiche sans édition décrite.
+ *
+ * Version 5 : les citations sont retirées de l'application. L'entité disparaît
+ * du document plutôt que d'y rester vide — et la version le dit, sans quoi un
+ * export récent serait indiscernable d'un export où l'utilisateur n'en avait
+ * simplement jamais saisi.
  */
-export const EXPORT_VERSION = 3;
+export const EXPORT_VERSION = 5;
 
 export type ExportedWork = {
   id: string;
   type: string;
   titleFr: string;
   titleOriginal: string | null;
+  /** Code ISO 639-1 — la langue du texte, pas celle d'une traduction. */
+  originalLanguage: string | null;
   year: number | null;
   synopsis: string | null;
   durationMinutes: number | null;
-  pageCount: number | null;
-  isbn: string | null;
   needsCompletion: boolean;
   genres: string[];
   creators: { name: string; role: string | null }[];
@@ -44,6 +54,9 @@ export type ExportedWork = {
    */
   editions: {
     label: string;
+    title: string | null;
+    language: string | null;
+    translators: string[];
     format: string | null;
     publisher: string | null;
     isbn: string | null;
@@ -83,7 +96,6 @@ export type ExportedDocument = {
   lists: unknown[];
   tags: unknown[];
   favorites: unknown[];
-  quotes: unknown[];
   goals: unknown[];
   // Social (lot 4) — les gestes de l'utilisateur, pas ceux qu'il a reçus.
   follows: unknown[];
@@ -120,7 +132,6 @@ export const CSV_ENTITIES = [
   "listes",
   "tags",
   "favoris",
-  "citations",
   "objectifs",
   "editions",
   // Social (lot 4)
@@ -148,7 +159,6 @@ export const ENTITY_LABELS: Record<CsvEntity, string> = {
   listes: "Listes et leurs éléments",
   tags: "Étiquettes",
   favoris: "Favoris de profil",
-  citations: "Citations",
   objectifs: "Objectifs annuels",
   editions: "Éditions",
   abonnements: "Abonnements",

@@ -4,6 +4,7 @@ import { FavoritesRow } from "@/components/profile/FavoritesRow";
 import { Card } from "@/components/ui/Card";
 import { requireUser } from "@/lib/session";
 import { db } from "@/lib/db";
+import { resolveCovers } from "@/lib/cover-loader";
 
 function imageIdFromUrl(url: string | null | undefined): string | null {
   if (!url) return null;
@@ -33,6 +34,11 @@ export default async function ProfilPage() {
   ]);
   if (!user) return null;
 
+  const covers = await resolveCovers(
+    favorites.map((f) => f.work),
+    sessionUser.id,
+  );
+
   return (
     <div className="mx-auto max-w-lg">
       <h1 className="mb-6 text-xl font-semibold">Mon profil</h1>
@@ -42,7 +48,12 @@ export default async function ProfilPage() {
         <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
           Mes favoris
         </h2>
-        <FavoritesRow initial={favorites.map((f) => f.work)} />
+        <FavoritesRow
+          initial={favorites.map((f) => ({
+            ...f.work,
+            coverImageId: covers.get(f.work.id),
+          }))}
+        />
       </section>
 
       <ProfileForm
@@ -143,15 +154,6 @@ export default async function ProfilPage() {
             🏷️ Mes étiquettes
             <span className="block text-xs text-muted">
               Le vocabulaire posé sur vos œuvres et votre journal
-            </span>
-          </Link>
-          <Link
-            href="/citations"
-            className="px-4 py-3 text-sm hover:bg-elevated"
-          >
-            ❝ Mes citations
-            <span className="block text-xs text-muted">
-              Les passages sauvegardés de vos lectures
             </span>
           </Link>
           <Link

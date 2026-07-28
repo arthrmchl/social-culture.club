@@ -66,8 +66,7 @@ describe("consolidation de la référence", () => {
 
   it("réunit les informations de fiche d'une lecture", () => {
     const dune = find(goodreads, "Dune");
-    expect(dune.ref.isbn).toBe("9780441013593");
-    expect(dune.ref.pageCount).toBe(896);
+    expect(dune.ref.year).toBe(1965);
     expect(dune.ref.creators).toEqual(["Frank Herbert"]);
   });
 

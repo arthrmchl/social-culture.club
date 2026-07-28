@@ -1,6 +1,7 @@
 import "server-only";
 import { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
+import { resolveCovers } from "@/lib/cover-loader";
 import type { WorkType } from "@/generated/prisma/enums";
 import type { ImportCandidate } from "./match";
 
@@ -24,7 +25,6 @@ type Row = {
   titleFr: string;
   titleNormalized: string;
   year: number | null;
-  isbn: string | null;
   coverImageId: string | null;
   sim: number;
 };
@@ -60,7 +60,6 @@ export async function findImportCandidates(
         w."titleFr",
         w."titleNormalized",
         w."year",
-        w."isbn",
         w."coverImageId",
         similarity(w."titleNormalized", t.norm) AS "sim"
       FROM unnest(${keys}::text[], ${norms}::text[]) AS t(key, norm)
@@ -88,6 +87,11 @@ export async function findImportCandidates(
       byWork.set(c.workId, list);
     }
 
+    // La couverture d'une lecture appartient à ses éditions (lot 5) : la
+    // résoudre en une passe, sans regard particulier — l'écran de rapprochement
+    // n'appartient à personne.
+    const covers = await resolveCovers(rows);
+
     for (const row of rows) {
       const list = out.get(row.key) ?? [];
       list.push({
@@ -96,8 +100,7 @@ export async function findImportCandidates(
         titleFr: row.titleFr,
         titleNormalized: row.titleNormalized,
         year: row.year,
-        isbn: row.isbn,
-        coverImageId: row.coverImageId,
+        coverImageId: covers.get(row.id),
         creators: byWork.get(row.id) ?? [],
         sim: Number(row.sim),
       });

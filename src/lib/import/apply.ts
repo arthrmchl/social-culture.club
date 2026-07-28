@@ -3,6 +3,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import type { ImportTarget, ImportRow } from "@/generated/prisma/client";
 import type { ImportSource, WorkStatusState } from "@/generated/prisma/enums";
 import { normalizeTitle, slugify } from "@/lib/text";
+import { upsertPersonIds } from "@/lib/people";
 import { parseTagInput } from "@/lib/tags";
 import {
   recomputeSeriesState,
@@ -71,8 +72,6 @@ export async function applyTarget(
         titleOriginal: target.titleOriginal,
         titleNormalized: normalizeTitle(target.titleFr),
         year: target.year,
-        pageCount: target.pageCount,
-        isbn: target.isbn,
         coverImageId: null,
         needsCompletion: true,
         createdById: userId,
@@ -92,16 +91,9 @@ export async function applyTarget(
     created = true;
 
     // Créateurs : upsert par nom normalisé, comme à la création manuelle.
-    for (const name of target.creators) {
-      const nameNormalized = normalizeTitle(name);
-      if (!nameNormalized) continue;
-      const person = await tx.person.upsert({
-        where: { nameNormalized },
-        update: {},
-        create: { name, nameNormalized },
-      });
+    for (const personId of await upsertPersonIds(tx, target.creators)) {
       await tx.workCreator.createMany({
-        data: [{ workId, personId: person.id, role: null }],
+        data: [{ workId, personId, role: null }],
         skipDuplicates: true,
       });
     }

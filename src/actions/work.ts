@@ -5,10 +5,12 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireUser, isAdmin } from "@/lib/session";
-import { normalizeTitle, slugify } from "@/lib/text";
+import { normalizeTitle, slugify, splitList } from "@/lib/text";
+import { upsertPersonIds } from "@/lib/people";
 import { buildSeasons, buildTomes } from "@/lib/generators";
 import { findDuplicateWorks, type DuplicateCandidate } from "@/lib/search";
-import { WORK_TYPES } from "@/lib/media";
+import { normalizeLanguage } from "@/lib/languages";
+import { WORK_TYPES, worksOwnCover } from "@/lib/media";
 import type { WorkType } from "@/generated/prisma/enums";
 
 const currentYear = new Date().getFullYear();
@@ -17,16 +19,17 @@ const workSchema = z.object({
   type: z.enum(WORK_TYPES as [WorkType, ...WorkType[]]),
   titleFr: z.string().min(1, "Titre requis.").max(300),
   titleOriginal: z.string().max(300).optional(),
+  originalLanguage: z.string().max(40).optional(),
   year: z.coerce
     .number()
     .int()
     .min(1800, "Année invalide.")
     .max(currentYear + 5, "Année invalide."),
-  coverImageId: z.string().min(1, "Un visuel est obligatoire (D31)."),
+  // D31 ne vaut que pour les médias qui portent leur visuel : celui d'un livre,
+  // d'une BD ou d'un manga appartient à ses éditions (voir `requireCover`).
+  coverImageId: z.string().optional(),
   synopsis: z.string().max(5000).optional(),
   durationMinutes: z.coerce.number().int().positive().optional(),
-  pageCount: z.coerce.number().int().positive().optional(),
-  isbn: z.string().max(20).optional(),
   format: z.string().max(20).optional(), // animés : TV/OAV/ONA/SPECIAL
   genres: z.string().optional(), // séparés par des virgules
   creators: z.string().optional(), // séparés par des virgules
@@ -36,16 +39,25 @@ const workSchema = z.object({
   tomesCount: z.coerce.number().int().min(0).max(500).optional(),
 });
 
-function splitList(raw?: string): string[] {
-  if (!raw) return [];
-  return [
-    ...new Set(
-      raw
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-    ),
-  ];
+/** Le visuel de la fiche, ou l'erreur D31 quand le média doit en porter un. */
+function requireCover(
+  type: WorkType,
+  coverImageId: string | undefined,
+): { ok: true; value: string | null } | { ok: false; error: string } {
+  if (!worksOwnCover(type)) return { ok: true, value: null };
+  if (!coverImageId) {
+    return { ok: false, error: "Un visuel est obligatoire (D31)." };
+  }
+  return { ok: true, value: coverImageId };
+}
+
+/**
+ * Le rôle des créateurs saisis. Un livre a des auteurs ; une BD a un
+ * scénariste et un dessinateur, qu'un rôle unique trahirait — on n'en met donc
+ * aucun tant que la saisie ne les distingue pas.
+ */
+function creatorRole(type: WorkType): string | null {
+  return type === "BOOK" ? "auteur" : null;
 }
 
 /** FormData -> objet, en ignorant les champs vides (sinon z.coerce("") = 0). */
@@ -81,6 +93,9 @@ export async function createWork(
   }
   const d = parsed.data;
 
+  const cover = requireCover(d.type, d.coverImageId);
+  if (!cover.ok) return { error: cover.error };
+
   const genreNames = splitList(d.genres);
   const creatorNames = splitList(d.creators);
 
@@ -94,13 +109,12 @@ export async function createWork(
         titleFr: d.titleFr,
         titleOriginal: d.titleOriginal || null,
         titleNormalized: normalizeTitle(d.titleFr),
+        originalLanguage: normalizeLanguage(d.originalLanguage),
         year: d.year,
         synopsis: d.synopsis || null,
         durationMinutes: d.durationMinutes ?? null,
-        pageCount: d.pageCount ?? null,
-        isbn: d.isbn || null,
         metadata,
-        coverImageId: d.coverImageId,
+        coverImageId: cover.value,
         createdById: user.id,
       },
     });
@@ -118,15 +132,10 @@ export async function createWork(
     }
 
     // Créateurs (upsert Person par nom normalisé + connexion)
-    for (const name of creatorNames) {
-      const nameNormalized = normalizeTitle(name);
-      const person = await tx.person.upsert({
-        where: { nameNormalized },
-        update: {},
-        create: { name, nameNormalized },
-      });
+    const role = creatorRole(d.type);
+    for (const personId of await upsertPersonIds(tx, creatorNames)) {
       await tx.workCreator.create({
-        data: { workId: created.id, personId: person.id, role: null },
+        data: { workId: created.id, personId, role },
       });
     }
 
@@ -176,6 +185,9 @@ export async function duplicateWork(sourceId: string): Promise<never> {
       creators: true,
       seasons: { include: { episodes: true } },
       tomes: true,
+      // Les éditions de l'œuvre — pas celles rattachées à un tome, que la
+      // copie des tomes ne rattacherait à rien.
+      editions: { where: { workId: sourceId }, include: { creators: true } },
     },
   });
   if (!source) redirect("/catalogue");
@@ -187,11 +199,10 @@ export async function duplicateWork(sourceId: string): Promise<never> {
         titleFr: `${source.titleFr} (copie)`,
         titleOriginal: source.titleOriginal,
         titleNormalized: normalizeTitle(`${source.titleFr} copie`),
+        originalLanguage: source.originalLanguage,
         year: source.year,
         synopsis: source.synopsis,
         durationMinutes: source.durationMinutes,
-        pageCount: source.pageCount,
-        isbn: source.isbn,
         metadata: source.metadata as object,
         coverImageId: source.coverImageId,
         createdById: user.id,
@@ -209,6 +220,28 @@ export async function duplicateWork(sourceId: string): Promise<never> {
             number: t.number,
             title: t.title,
             pageCount: t.pageCount,
+          })),
+        },
+        // Sans elles, la copie d'un livre naîtrait sans visuel ni pagination :
+        // tout cela vit désormais sur l'édition (lot 5).
+        editions: {
+          create: source.editions.map((e) => ({
+            title: e.title,
+            language: e.language,
+            isbn: e.isbn,
+            pageCount: e.pageCount,
+            publisher: e.publisher,
+            format: e.format,
+            isDefault: e.isDefault,
+            coversTomeFrom: e.coversTomeFrom,
+            coversTomeTo: e.coversTomeTo,
+            coverImageId: e.coverImageId,
+            creators: {
+              create: e.creators.map((c) => ({
+                personId: c.personId,
+                role: c.role,
+              })),
+            },
           })),
         },
       },
@@ -260,21 +293,18 @@ export async function deleteWork(
   redirect("/catalogue");
 }
 
-const editSchema = workSchema
-  .pick({
-    titleFr: true,
-    titleOriginal: true,
-    year: true,
-    synopsis: true,
-    durationMinutes: true,
-    pageCount: true,
-    isbn: true,
-    coverImageId: true,
-    genres: true,
-    creators: true,
-    format: true,
-  })
-  .partial({ coverImageId: true });
+const editSchema = workSchema.pick({
+  titleFr: true,
+  titleOriginal: true,
+  originalLanguage: true,
+  year: true,
+  synopsis: true,
+  durationMinutes: true,
+  coverImageId: true,
+  genres: true,
+  creators: true,
+  format: true,
+});
 
 /** Édition d'une fiche — réservée au créateur et à l'administrateur (D30). */
 export async function editWork(
@@ -302,7 +332,12 @@ export async function editWork(
       ? { ...(work.metadata as object), format: d.format }
       : (work.metadata as object);
 
-  const coverImageId = d.coverImageId || work.coverImageId;
+  // Un média de lecture ne porte plus de visuel (lot 5) : celui d'une fiche
+  // antérieure au découpage œuvre/édition n'est pas reconduit.
+  const coverImageId = worksOwnCover(work.type)
+    ? d.coverImageId || work.coverImageId
+    : null;
+  const year = d.year ?? work.year;
 
   await db.$transaction(async (tx) => {
     await tx.work.update({
@@ -313,17 +348,17 @@ export async function editWork(
         titleNormalized: d.titleFr
           ? normalizeTitle(d.titleFr)
           : work.titleNormalized,
-        year: d.year ?? work.year,
+        originalLanguage:
+          normalizeLanguage(d.originalLanguage) ?? work.originalLanguage,
+        year,
         synopsis: d.synopsis ?? work.synopsis,
         durationMinutes: d.durationMinutes ?? work.durationMinutes,
-        pageCount: d.pageCount ?? work.pageCount,
-        isbn: d.isbn ?? work.isbn,
         coverImageId,
-        // Une fiche importée cesse d'être « à compléter » dès qu'elle a un
-        // visuel et une année — les deux manques que laisse un import (I1).
+        // Une fiche importée cesse d'être « à compléter » dès qu'elle a une
+        // année et, pour les médias qui en portent un, un visuel (I1).
         needsCompletion:
           work.needsCompletion &&
-          (!coverImageId || (d.year ?? work.year) === null),
+          (year === null || (worksOwnCover(work.type) && !coverImageId)),
         metadata,
       },
     });
@@ -340,16 +375,9 @@ export async function editWork(
     }
 
     await tx.workCreator.deleteMany({ where: { workId } });
-    for (const name of splitList(d.creators)) {
-      const nameNormalized = normalizeTitle(name);
-      const person = await tx.person.upsert({
-        where: { nameNormalized },
-        update: {},
-        create: { name, nameNormalized },
-      });
-      await tx.workCreator.create({
-        data: { workId, personId: person.id, role: null },
-      });
+    const role = creatorRole(work.type);
+    for (const personId of await upsertPersonIds(tx, splitList(d.creators))) {
+      await tx.workCreator.create({ data: { workId, personId, role } });
     }
   });
 

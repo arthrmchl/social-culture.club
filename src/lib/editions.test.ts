@@ -4,11 +4,14 @@ import {
   editionLabel,
   isOmnibus,
   omnibusLabel,
+  pageCountFor,
   pickDefaultEdition,
   type EditionLike,
 } from "./editions";
 
 const plain: EditionLike = {
+  title: null,
+  language: null,
   publisher: "Glénat",
   format: "poche",
   pageCount: 210,
@@ -70,8 +73,19 @@ describe("editionLabel", () => {
     expect(editionLabel(plain)).toBe("Glénat · poche · 210 pages");
   });
 
+  it("met le titre de l'édition en tête et nomme la langue", () => {
+    expect(editionLabel({ ...plain, title: "Le Seigneur des Anneaux" })).toBe(
+      "Le Seigneur des Anneaux · Glénat · poche · 210 pages",
+    );
+    expect(editionLabel({ ...plain, language: "fr" })).toBe(
+      "Glénat · poche · Français · 210 pages",
+    );
+  });
+
   it("retombe sur l'ISBN puis sur un libellé neutre", () => {
     const bare: EditionLike = {
+      title: null,
+      language: null,
       publisher: null,
       format: "  ",
       pageCount: null,
@@ -82,6 +96,25 @@ describe("editionLabel", () => {
     };
     expect(editionLabel(bare)).toBe("ISBN 9782344012345");
     expect(editionLabel({ ...bare, isbn: null })).toBe("Édition sans détail");
+  });
+});
+
+describe("pageCountFor", () => {
+  const poche = { ...plain, id: "poche", pageCount: 380 };
+  const broche = { ...plain, id: "broche", pageCount: 210, isDefault: true };
+
+  it("suit l'édition que je lis", () => {
+    expect(pageCountFor([broche, poche], "poche")).toBe(380);
+  });
+
+  it("retombe sur l'édition par défaut", () => {
+    expect(pageCountFor([poche, broche], null)).toBe(210);
+    expect(pageCountFor([poche, broche], "disparue")).toBe(210);
+  });
+
+  it("ne connaît aucune pagination sans édition", () => {
+    expect(pageCountFor([], "poche")).toBeNull();
+    expect(pageCountFor([{ ...poche, pageCount: null }], "poche")).toBeNull();
   });
 });
 

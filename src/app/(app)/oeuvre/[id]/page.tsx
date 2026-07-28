@@ -27,11 +27,15 @@ import { AddToListButton } from "@/components/lists/AddToListButton";
 import { FavoriteButton } from "@/components/FavoriteButton";
 import { TagInput } from "@/components/tags/TagInput";
 import { TagPills } from "@/components/tags/TagPills";
-import { QuoteSection, type QuoteData } from "@/components/quotes/QuoteSection";
-import { EditionSection } from "@/components/editions/EditionSection";
+import {
+  EditionSection,
+  type EditionData,
+} from "@/components/editions/EditionSection";
 import { CorrectionDialog } from "@/components/social/CorrectionDialog";
 import { CorrectionQueue } from "@/components/social/CorrectionQueue";
-import { pageCountFor } from "@/lib/editions";
+import { editionLabel, pageCountFor } from "@/lib/editions";
+import { pickCoverImageId } from "@/lib/covers";
+import { languageLabel } from "@/lib/languages";
 import {
   JournalEntryCard,
   type JournalEntryCardData,
@@ -63,7 +67,12 @@ export default async function OeuvrePage({
         include: { episodes: { orderBy: { number: "asc" } } },
       },
       tomes: { orderBy: { number: "asc" } },
-      editions: { orderBy: { createdAt: "asc" } },
+      editions: {
+        orderBy: { createdAt: "asc" },
+        include: {
+          creators: { include: { person: { select: { name: true } } } },
+        },
+      },
       createdBy: { select: { name: true } },
     },
   });
@@ -78,7 +87,6 @@ export default async function OeuvrePage({
     contextRows,
     listMemberships,
     workTags,
-    quotes,
     favorite,
   ] = await Promise.all([
     db.userWork.findUnique({
@@ -123,17 +131,6 @@ export default async function OeuvrePage({
       select: { tag: { select: { name: true, slug: true } } },
       orderBy: { tag: { name: "asc" } },
     }),
-    db.quote.findMany({
-      where: { userId: user.id, workId: id },
-      orderBy: [{ page: "asc" }, { createdAt: "asc" }],
-      select: {
-        id: true,
-        text: true,
-        page: true,
-        note: true,
-        tome: { select: { number: true } },
-      },
-    }),
     db.favorite.findUnique({
       where: { userId_workId: { userId: user.id, workId: id } },
       select: { id: true },
@@ -158,7 +155,14 @@ export default async function OeuvrePage({
         },
       })
     : [];
-  const cover = work.coverImageId ? `/api/uploads/${work.coverImageId}` : null;
+  // La couverture d'une lecture appartient à ses éditions (lot 5) : mon
+  // édition d'abord, celle par défaut ensuite, la vignette générée sinon.
+  const coverImageId = pickCoverImageId(
+    work,
+    work.editions,
+    userWork?.editionId,
+  );
+  const cover = coverImageId ? `/api/uploads/${coverImageId}` : null;
   const totalEpisodes = work.seasons.reduce((n, s) => n + s.episodes.length, 0);
 
   const watchedSet = new Set(watches.map((w) => w.episodeId));
@@ -206,21 +210,23 @@ export default async function OeuvrePage({
       id: work.id,
       type: work.type,
       titleFr: work.titleFr,
-      coverImageId: work.coverImageId,
+      coverImageId,
     },
   }));
 
   const viewingCount = entries.length;
+  const editionItems: EditionData[] = work.editions.map((e) => ({
+    ...e,
+    translators: e.creators.map((c) => c.person.name),
+  }));
+  // L'en-tête annonce la pagination de référence (mon édition, sinon celle par
+  // défaut) : c'est une information de catalogue. Le suivi, lui, exige que
+  // j'aie désigné la mienne.
+  const readingPageCount = pageCountFor(work.editions, userWork?.editionId);
   const myEdition =
     work.editions.find((e) => e.id === userWork?.editionId) ?? null;
+  const originalLanguage = languageLabel(work.originalLanguage);
   const tags = workTags.map((wt) => wt.tag);
-  const quoteItems: QuoteData[] = quotes.map((q) => ({
-    id: q.id,
-    text: q.text,
-    page: q.page,
-    note: q.note,
-    tomeNumber: q.tome?.number ?? null,
-  }));
 
   return (
     <div className="flex flex-col gap-8">
@@ -230,8 +236,9 @@ export default async function OeuvrePage({
           <div>
             <p className="text-sm font-medium">Fiche à compléter</p>
             <p className="text-sm text-muted">
-              Importée depuis un service externe : il lui manque au moins un
-              visuel.
+              Importée depuis un service externe : il lui manque au moins une
+              information — son année, et son visuel pour les médias qui en
+              portent un.
             </p>
           </div>
           {canEdit && (
@@ -270,12 +277,15 @@ export default async function OeuvrePage({
           <p className="mt-1 text-sm text-muted">
             {formatYear(work.year)}
             {work.durationMinutes ? ` · ${work.durationMinutes} min` : ""}
-            {work.pageCount ? ` · ${work.pageCount} pages` : ""}
+            {readingPageCount ? ` · ${readingPageCount} pages` : ""}
+            {originalLanguage ? ` · ${originalLanguage}` : ""}
           </p>
 
           {work.creators.length > 0 && (
             <p className="mt-3 text-sm">
-              <span className="text-muted">Créateurs : </span>
+              <span className="text-muted">
+                {work.type === "BOOK" ? "Auteur·rice(s) : " : "Créateurs : "}
+              </span>
               {work.creators.map((c) => c.person.name).join(", ")}
             </p>
           )}
@@ -375,11 +385,11 @@ export default async function OeuvrePage({
 
       {/* Éditions (lot 3, L6, D8) — le modèle dormait en base depuis le lot 0 */}
       {isReading(work.type) && (
-        <section>
+        <section id="editions">
           <SectionTitle>Éditions</SectionTitle>
           <EditionSection
             workId={work.id}
-            editions={work.editions}
+            editions={editionItems}
             myEditionId={userWork?.editionId ?? null}
             canEdit={canEdit}
             hasTomes={work.tomes.length > 0}
@@ -395,18 +405,6 @@ export default async function OeuvrePage({
           <TagInput target={{ kind: "work", id: work.id }} tags={tags} />
         </div>
       </section>
-
-      {/* Citations (lot 3, L3 — lectures uniquement, D9) */}
-      {isReading(work.type) && (
-        <section>
-          <SectionTitle>Citations</SectionTitle>
-          <QuoteSection
-            workId={work.id}
-            quotes={quoteItems}
-            tomes={work.tomes.map((t) => ({ id: t.id, number: t.number }))}
-          />
-        </section>
-      )}
 
       {/* Listes (lot 3, S9) */}
       <section>
@@ -448,17 +446,38 @@ export default async function OeuvrePage({
         </section>
       )}
 
-      {usesPages(work.type) && (
+      {/*
+        Suivi à la page : il n'a de sens que rapporté à une édition (lot 5).
+        Sans édition décrite, rien à suivre ; sans édition désignée, on demande
+        laquelle avant d'ouvrir la saisie.
+      */}
+      {usesPages(work.type) && work.editions.length > 0 && (
         <section>
           <SectionTitle>Progression de lecture</SectionTitle>
           <Card className="p-4">
-            <ReadingProgressWidget
-              workId={work.id}
-              currentPage={userWork?.currentPage ?? null}
-              currentPercent={userWork?.progressPercent ?? null}
-              // La pagination suit l'édition lue quand elle est précisée (D8).
-              pageCount={pageCountFor(work.pageCount, myEdition)}
-            />
+            {myEdition ? (
+              <div className="flex flex-col gap-2">
+                <p className="text-xs text-muted">
+                  Édition lue : {editionLabel(myEdition)}
+                </p>
+                <ReadingProgressWidget
+                  workId={work.id}
+                  editionId={myEdition.id}
+                  currentPage={userWork?.currentPage ?? null}
+                  currentPercent={userWork?.progressPercent ?? null}
+                  pageCount={myEdition.pageCount}
+                />
+              </div>
+            ) : (
+              <p className="text-sm text-muted">
+                Désignez l&apos;édition que vous lisez pour suivre votre
+                progression —{" "}
+                <a href="#editions" className="text-accent hover:underline">
+                  choisir mon édition
+                </a>
+                .
+              </p>
+            )}
           </Card>
         </section>
       )}

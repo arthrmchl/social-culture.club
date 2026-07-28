@@ -4,6 +4,8 @@ import { WorkGrid } from "@/components/WorkCard";
 import { EmptyState } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { db } from "@/lib/db";
+import { resolveCovers } from "@/lib/cover-loader";
+import { requireUser } from "@/lib/session";
 import { isWorkType } from "@/lib/media";
 import type { WorkType } from "@/generated/prisma/enums";
 
@@ -12,6 +14,7 @@ export default async function CataloguePage({
 }: {
   searchParams: Promise<{ type?: string }>;
 }) {
+  const user = await requireUser();
   const { type } = await searchParams;
   const workType: WorkType | undefined =
     type && isWorkType(type) ? type : undefined;
@@ -33,6 +36,9 @@ export default async function CataloguePage({
     }),
     db.work.count({ where: { needsCompletion: true } }),
   ]);
+
+  const covers = await resolveCovers(works, user.id);
+  const items = works.map((w) => ({ ...w, coverImageId: covers.get(w.id) }));
 
   return (
     <div className="flex flex-col gap-5">
@@ -68,7 +74,7 @@ export default async function CataloguePage({
       )}
 
       {works.length > 0 ? (
-        <WorkGrid works={works} />
+        <WorkGrid works={items} />
       ) : (
         <EmptyState
           title="Le catalogue est vide"

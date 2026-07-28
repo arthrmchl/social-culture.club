@@ -14,32 +14,48 @@ export function CoverUpload({
   aspect = "portrait",
   label = "Visuel",
   required,
+  onChange,
 }: {
   name: string;
   defaultImageId?: string | null;
   aspect?: "portrait" | "square";
   label?: string;
   required?: boolean;
+  /** Pour les formulaires sans `<form>` (éditions) : le champ caché ne suffit pas. */
+  onChange?: (imageId: string | null) => void;
 }) {
-  const [imageId, setImageId] = useState<string | null>(defaultImageId ?? null);
+  const [imageId, setImageIdState] = useState<string | null>(
+    defaultImageId ?? null,
+  );
+
+  const setImageId = useCallback(
+    (id: string | null) => {
+      setImageIdState(id);
+      onChange?.(id);
+    },
+    [onChange],
+  );
   const [status, setStatus] = useState<"idle" | "uploading" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const upload = useCallback(async (file: File) => {
-    setStatus("uploading");
-    setError(null);
-    const fd = new FormData();
-    fd.set("file", file);
-    const res = await uploadImage(fd);
-    if (res.ok) {
-      setImageId(res.id);
-      setStatus("idle");
-    } else {
-      setError(res.error);
-      setStatus("error");
-    }
-  }, []);
+  const upload = useCallback(
+    async (file: File) => {
+      setStatus("uploading");
+      setError(null);
+      const fd = new FormData();
+      fd.set("file", file);
+      const res = await uploadImage(fd);
+      if (res.ok) {
+        setImageId(res.id);
+        setStatus("idle");
+      } else {
+        setError(res.error);
+        setStatus("error");
+      }
+    },
+    [setImageId],
+  );
 
   const onPaste = useCallback(
     (e: React.ClipboardEvent) => {

@@ -2,6 +2,7 @@
 
 import { requireUser } from "@/lib/session";
 import { searchWorks } from "@/lib/search";
+import { resolveCovers } from "@/lib/cover-loader";
 import type { WorkType } from "@/generated/prisma/enums";
 
 export type PickerResult = {
@@ -24,16 +25,18 @@ export async function searchForPicker(
   query: string,
   type?: WorkType,
 ): Promise<PickerResult[]> {
-  await requireUser();
+  const user = await requireUser();
   const q = query.trim();
   if (q.length < 2) return [];
 
-  const results = await searchWorks(q, type);
-  return results.slice(0, 10).map((r) => ({
+  const results = (await searchWorks(q, type)).slice(0, 10);
+  const covers = await resolveCovers(results, user.id);
+
+  return results.map((r) => ({
     id: r.id,
     type: r.type,
     titleFr: r.titleFr,
     year: r.year,
-    coverImageId: r.coverImageId,
+    coverImageId: covers.get(r.id),
   }));
 }

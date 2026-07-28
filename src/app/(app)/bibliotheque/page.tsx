@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
+import { resolveCovers } from "@/lib/cover-loader";
 import { requireUser } from "@/lib/session";
 import { libraryParams, parseLibraryQuery } from "@/lib/library";
 import { MediaFilter } from "@/components/MediaFilter";
@@ -90,12 +91,17 @@ export default async function BibliothequePage({
     }),
   ]);
 
+  const covers = await resolveCovers(
+    rows.map((r) => r.work),
+    user.id,
+  );
+
   const items: WorkRowData[] = rows.map((r) => ({
     id: r.work.id,
     type: r.work.type,
     titleFr: r.work.titleFr,
     year: r.work.year,
-    coverImageId: r.work.coverImageId,
+    coverImageId: covers.get(r.work.id),
     state: r.state,
     rating: r.currentRating,
     liked: r.liked,

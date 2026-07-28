@@ -90,10 +90,19 @@ export function usesPages(type: WorkType): boolean {
 
 /**
  * Une lecture, au sens de D9 et D12 : livres, BD, mangas. C'est le périmètre
- * des citations (L3) et de l'objectif « lectures » (L5).
+ * des éditions (D8) et de l'objectif « lectures » (L5).
  */
 export function isReading(type: WorkType): boolean {
   return usesPages(type) || usesTomes(type);
+}
+
+/**
+ * Qui porte la couverture (lot 5). Une lecture n'en a pas : ce sont ses
+ * éditions qui sont publiées, donc illustrées. L'obligation de visuel (D31)
+ * et le champ de téléversement de la fiche se règlent sur ce seul juge.
+ */
+export function worksOwnCover(type: WorkType): boolean {
+  return !isReading(type);
 }
 
 /**

@@ -17,7 +17,10 @@ export type WorkSearchResult = {
 
 /**
  * Recherche interne (S1) tolérante aux fautes via pg_trgm.
- * Cherche sur le titre normalisé (trigrammes) et, en secours, sur l'ISBN saisi.
+ *
+ * Cherche sur le titre normalisé (trigrammes) et, en secours, sur l'ISBN — qui
+ * appartient à une **édition** depuis le lot 5, la sienne ou celle d'un de ses
+ * tomes. Une œuvre reste donc trouvable par l'ISBN de son poche.
  */
 export async function searchWorks(
   rawQuery: string,
@@ -31,6 +34,14 @@ export async function searchWorks(
     ? Prisma.sql`AND w."type" = ${type}::"WorkType"`
     : Prisma.empty;
 
+  const isbnMatch = Prisma.sql`(
+    ${isbn} <> '' AND EXISTS (
+      SELECT 1 FROM "Edition" e
+      LEFT JOIN "Tome" t ON t."id" = e."tomeId"
+      WHERE COALESCE(e."workId", t."workId") = w."id" AND e."isbn" = ${isbn}
+    )
+  )`;
+
   return db.$queryRaw<WorkSearchResult[]>(Prisma.sql`
     SELECT
       w."id",
@@ -42,13 +53,13 @@ export async function searchWorks(
       w."needsCompletion",
       GREATEST(
         similarity(w."titleNormalized", ${q}),
-        CASE WHEN w."isbn" IS NOT NULL AND w."isbn" = ${isbn} AND ${isbn} <> '' THEN 1 ELSE 0 END
+        CASE WHEN ${isbnMatch} THEN 1 ELSE 0 END
       ) AS "sim"
     FROM "Work" w
     WHERE (
       w."titleNormalized" % ${q}
       OR w."titleNormalized" ILIKE ${"%" + q + "%"}
-      OR (${isbn} <> '' AND w."isbn" = ${isbn})
+      OR ${isbnMatch}
     )
     ${typeClause}
     ORDER BY "sim" DESC, w."year" DESC NULLS LAST

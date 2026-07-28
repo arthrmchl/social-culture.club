@@ -1,11 +1,18 @@
 "use server";
 
 import { z } from "zod";
+import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { requireUser, isAdmin } from "@/lib/session";
 import { applyEditionCoverage, recomputeViewings } from "@/lib/tracking";
+import { normalizeLanguage } from "@/lib/languages";
+import { upsertPersonIds } from "@/lib/people";
+import { splitList } from "@/lib/text";
 import { revalidateWork } from "./revalidate";
 import type { ActionResult } from "./status";
+
+/** Le seul rôle porté aujourd'hui par une personne rattachée à une édition. */
+const TRANSLATOR = "traducteur";
 
 /**
  * Éditions et intégrales (L6, D8).
@@ -19,6 +26,9 @@ import type { ActionResult } from "./status";
 const editionSchema = z.object({
   workId: z.string().min(1),
   tomeId: z.string().optional(),
+  title: z.string().max(300).optional(),
+  language: z.string().max(40).optional(),
+  translators: z.string().optional(), // séparés par des virgules
   isbn: z.string().max(20).optional(),
   pageCount: z.coerce.number().int().positive().max(50_000).optional(),
   publisher: z.string().max(200).optional(),
@@ -29,6 +39,26 @@ const editionSchema = z.object({
 });
 
 export type EditionInput = z.input<typeof editionSchema>;
+
+/**
+ * Remplace en bloc les traducteurs d'une édition, comme les créateurs d'une
+ * œuvre : la saisie libre est la vérité, pas l'accumulation des saisies
+ * précédentes.
+ */
+async function setTranslators(
+  tx: Prisma.TransactionClient,
+  editionId: string,
+  raw: string,
+) {
+  await tx.editionCreator.deleteMany({
+    where: { editionId, role: TRANSLATOR },
+  });
+  for (const personId of await upsertPersonIds(tx, splitList(raw))) {
+    await tx.editionCreator.create({
+      data: { editionId, personId, role: TRANSLATOR },
+    });
+  }
+}
 
 /** Droits d'édition d'une fiche (D30) : son créateur, ou l'administrateur. */
 async function canEditWork(
@@ -70,10 +100,12 @@ export async function createEdition(
     // de création — un hasard plutôt qu'un choix.
     const count = await tx.edition.count({ where: { workId: d.workId } });
 
-    await tx.edition.create({
+    const created = await tx.edition.create({
       data: {
         workId: d.workId,
         tomeId: d.tomeId || null,
+        title: d.title || null,
+        language: normalizeLanguage(d.language),
         isbn: d.isbn || null,
         pageCount: d.pageCount ?? null,
         publisher: d.publisher || null,
@@ -84,6 +116,8 @@ export async function createEdition(
         isDefault: count === 0,
       },
     });
+
+    if (d.translators) await setTranslators(tx, created.id, d.translators);
   });
 
   revalidateWork(d.workId);
@@ -116,23 +150,37 @@ export async function editEdition(
   }
   const d = parsed.data;
 
-  await db.edition.update({
-    where: { id: editionId },
-    data: {
-      ...(d.isbn !== undefined ? { isbn: d.isbn || null } : {}),
-      ...(d.pageCount !== undefined ? { pageCount: d.pageCount ?? null } : {}),
-      ...(d.publisher !== undefined ? { publisher: d.publisher || null } : {}),
-      ...(d.format !== undefined ? { format: d.format || null } : {}),
-      ...(d.coversTomeFrom !== undefined
-        ? { coversTomeFrom: d.coversTomeFrom ?? null }
-        : {}),
-      ...(d.coversTomeTo !== undefined
-        ? { coversTomeTo: d.coversTomeTo ?? null }
-        : {}),
-      ...(d.coverImageId !== undefined
-        ? { coverImageId: d.coverImageId || null }
-        : {}),
-    },
+  await db.$transaction(async (tx) => {
+    await tx.edition.update({
+      where: { id: editionId },
+      data: {
+        ...(d.title !== undefined ? { title: d.title || null } : {}),
+        ...(d.language !== undefined
+          ? { language: normalizeLanguage(d.language) }
+          : {}),
+        ...(d.isbn !== undefined ? { isbn: d.isbn || null } : {}),
+        ...(d.pageCount !== undefined
+          ? { pageCount: d.pageCount ?? null }
+          : {}),
+        ...(d.publisher !== undefined
+          ? { publisher: d.publisher || null }
+          : {}),
+        ...(d.format !== undefined ? { format: d.format || null } : {}),
+        ...(d.coversTomeFrom !== undefined
+          ? { coversTomeFrom: d.coversTomeFrom ?? null }
+          : {}),
+        ...(d.coversTomeTo !== undefined
+          ? { coversTomeTo: d.coversTomeTo ?? null }
+          : {}),
+        ...(d.coverImageId !== undefined
+          ? { coverImageId: d.coverImageId || null }
+          : {}),
+      },
+    });
+
+    if (d.translators !== undefined) {
+      await setTranslators(tx, editionId, d.translators);
+    }
   });
 
   revalidateWork(workId);

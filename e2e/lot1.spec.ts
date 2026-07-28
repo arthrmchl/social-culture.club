@@ -39,20 +39,42 @@ async function createWork(opts: {
   seasons?: string;
   episodes?: string;
   tomes?: string;
-  pages?: string;
 }) {
   await page.goto("/creer");
   if (opts.type) await page.getByRole("button", { name: opts.type }).click();
   await page.fill("#titleFr", opts.title);
   await page.fill("#year", opts.year);
-  await page.setInputFiles('input[type="file"]', COVER);
-  await expect(page.locator('img[alt="Aperçu du visuel"]')).toBeVisible();
+  // Une lecture n'a pas de visuel de fiche (lot 5) : le champ n'est pas rendu.
+  const cover = page.locator('input[type="file"]');
+  if (await cover.count()) {
+    await cover.setInputFiles(COVER);
+    await expect(page.locator('img[alt="Aperçu du visuel"]')).toBeVisible();
+  }
   if (opts.seasons) await page.fill("#seasonsCount", opts.seasons);
   if (opts.episodes) await page.fill("#episodesPerSeason", opts.episodes);
   if (opts.tomes) await page.fill("#tomesCount", opts.tomes);
-  if (opts.pages) await page.fill("#pageCount", opts.pages);
   await page.getByRole("button", { name: "Créer la fiche" }).click();
   await expect(page).toHaveURL(/\/oeuvre\/.+/);
+}
+
+/**
+ * Ajoute une édition depuis la fiche ouverte, la désigne comme celle qu'on lit
+ * (sans quoi la progression à la page reste fermée — lot 5), et attend que
+ * l'écran l'ait enregistré.
+ */
+async function addEdition(opts: { publisher: string; pages?: string }) {
+  await page.getByRole("button", { name: "Ajouter une édition" }).click();
+  await page.fill("#ed-publisher", opts.publisher);
+  if (opts.pages) await page.fill("#ed-pages", opts.pages);
+  await page.getByRole("button", { name: "Ajouter", exact: true }).click();
+  await expect(page.getByText("par défaut").first()).toBeVisible({
+    timeout: 10000,
+  });
+
+  await page.getByRole("button", { name: "Je lis celle-ci" }).first().click();
+  await expect(page.getByText("je lis celle-ci").first()).toBeVisible({
+    timeout: 10000,
+  });
 }
 
 test("film : note, j'aime, entrée de journal (revisionnage)", async () => {
@@ -71,7 +93,7 @@ test("film : note, j'aime, entrée de journal (revisionnage)", async () => {
   await page.getByRole("button", { name: /Ajouter au journal/ }).click();
   await page.getByLabel("Revisionnage / relecture").check();
   // `exact` : la fiche porte d'autres boutons dont le nom commence par
-  // « Enregistrer » (étiquettes, citations — lot 3).
+  // « Enregistrer » (les étiquettes, l'édition — lots 3 et 5).
   await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
 
   await expect(page.getByText(/1 visionnage au journal/)).toBeVisible();
@@ -118,7 +140,9 @@ test("manga : suivi au tome", async () => {
 });
 
 test("livre : progression de lecture met le statut à « en cours »", async () => {
-  await createWork({ title: BOOK, year: "2001", type: /Livre/, pages: "300" });
+  // La pagination vient de l'édition, pas de la fiche (lot 5).
+  await createWork({ title: BOOK, year: "2001", type: /Livre/ });
+  await addEdition({ publisher: "Folio", pages: "300" });
 
   await page.getByRole("spinbutton").first().fill("150");
   await page.getByRole("button", { name: "Mettre à jour" }).click();
