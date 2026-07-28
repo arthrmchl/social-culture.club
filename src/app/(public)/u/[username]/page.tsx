@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { FollowButton } from "@/components/social/FollowButton";
 import { ProfileHeader } from "@/components/social/ProfileHeader";
 import { PublicWorkGrid } from "@/components/social/PublicWorkGrid";
 import { Card, EmptyState } from "@/components/ui/Card";
@@ -41,6 +42,12 @@ export default async function ProfilPublicPage({ params }: Props) {
           lists: access.canSeeLists,
         }}
         follows={view.follows}
+        action={
+          <FollowButton
+            targetUserId={profile.id}
+            initial={view.myFollow}
+          />
+        }
       />
 
       {access.canSeeStats && (

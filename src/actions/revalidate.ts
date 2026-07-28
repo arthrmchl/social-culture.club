@@ -40,9 +40,18 @@ export function revalidateLists(slug?: string): void {
 export function revalidateProfile(username: string | null): void {
   revalidatePath("/profil");
   revalidatePath("/confidentialite");
+  revalidatePath("/abonnements");
   if (!username) return;
   revalidatePath(`/u/${username}`);
   revalidatePath(`/u/${username}/journal`);
   revalidatePath(`/u/${username}/critiques`);
   revalidatePath(`/u/${username}/listes`);
+  revalidatePath(`/u/${username}/abonnes`);
+  revalidatePath(`/u/${username}/abonnements`);
+}
+
+/** Le fil et la page « découvrir » (lot 4, P2). */
+export function revalidateFeed(): void {
+  revalidatePath("/fil");
+  revalidatePath("/decouvrir");
 }

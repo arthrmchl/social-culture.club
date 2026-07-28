@@ -31,6 +31,8 @@ const ITEMS: NavItem[] = [
  * atteignables au téléphone depuis `/profil` (règle du lot 2, étendue au 3).
  */
 const DESKTOP_ONLY: { href: string; label: string; adminOnly?: boolean }[] = [
+  { href: "/fil", label: "Fil" },
+  { href: "/decouvrir", label: "Découvrir" },
   { href: "/catalogue", label: "Catalogue" },
   { href: "/listes", label: "Listes" },
   { href: "/import", label: "Importer" },

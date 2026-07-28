@@ -82,6 +82,21 @@ export default async function ProfilPage() {
               </span>
             </div>
           )}
+          <Link href="/fil" className="px-4 py-3 text-sm hover:bg-elevated">
+            📰 Mon fil
+            <span className="block text-xs text-muted">
+              L&apos;activité récente des membres que je suis
+            </span>
+          </Link>
+          <Link
+            href="/abonnements"
+            className="px-4 py-3 text-sm hover:bg-elevated"
+          >
+            👥 Mes abonnements
+            <span className="block text-xs text-muted">
+              Qui je suis, qui me suit, et les demandes en attente
+            </span>
+          </Link>
           <Link
             href="/confidentialite"
             className="px-4 py-3 text-sm hover:bg-elevated"
