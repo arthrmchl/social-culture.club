@@ -1,8 +1,9 @@
-import { SocialLikeButton } from "./SocialLikeButton";
+import Link from "next/link";
+import { describeComments } from "@/lib/comments";
 import type { SocialCounts } from "@/lib/social/read";
 import type { SocialTarget } from "@/lib/social-target";
-import { describeComments } from "@/lib/comments";
-import Link from "next/link";
+import { ReportDialog } from "./ReportDialog";
+import { SocialLikeButton } from "./SocialLikeButton";
 
 /**
  * La barre de gestes sous une carte sociale (P3).
@@ -15,13 +16,16 @@ export function SocialFooter({
   target,
   counts,
   href,
+  canReport = false,
 }: {
   target: SocialTarget;
   counts: SocialCounts;
   href?: string | null;
+  /** Faux sur son propre contenu : on ne se signale pas soi-même. */
+  canReport?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-3 text-xs text-muted">
+    <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
       <SocialLikeButton
         target={target}
         initialCount={counts.likes}
@@ -35,6 +39,7 @@ export function SocialFooter({
       ) : (
         <span>💬 {describeComments(counts.comments)}</span>
       )}
+      {canReport && <ReportDialog subject={{ kind: "content", target }} />}
     </div>
   );
 }

@@ -67,6 +67,11 @@ export function revalidateNotifications(): void {
   revalidatePath("/", "layout");
 }
 
+/** La file de modération (lot 4, P4). */
+export function revalidateModeration(): void {
+  revalidatePath("/moderation");
+}
+
 /**
  * Le permalien d'une cible sociale et la page qui la liste (lot 4, P3).
  *

@@ -35,6 +35,9 @@ export default async function ListePubliquePage({ params }: Props) {
     getSocialCounts(target, profile.id),
     getComments(target, profile.id),
   ]);
+  // On ne signale pas son propre contenu, ni sans compte.
+  const canReport =
+    counts.canInteract && view.author.viewer?.id !== view.author.profile.id;
 
   return (
     <div className="flex flex-col gap-4">
@@ -62,7 +65,7 @@ export default async function ListePubliquePage({ params }: Props) {
           <p className="mt-2 text-sm text-muted">{list.description}</p>
         )}
         <div className="mt-2">
-          <SocialFooter target={target} counts={counts} />
+          <SocialFooter target={target} counts={counts} canReport={canReport} />
         </div>
       </div>
 

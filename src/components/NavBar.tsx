@@ -37,6 +37,7 @@ const DESKTOP_ONLY: { href: string; label: string; adminOnly?: boolean }[] = [
   { href: "/listes", label: "Listes" },
   { href: "/import", label: "Importer" },
   { href: "/invitations", label: "Invitations", adminOnly: true },
+  { href: "/moderation", label: "Modération", adminOnly: true },
 ];
 
 function isActive(pathname: string, href: string): boolean {

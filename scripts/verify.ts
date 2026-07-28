@@ -31,6 +31,7 @@ import { MAX_FAVORITES } from "../src/lib/favorites";
 import { collectUserExport, entityToCsv } from "../src/lib/export/collect";
 import { CSV_ENTITIES } from "../src/lib/export/shape";
 import { accessFor, blockedUserIds } from "../src/lib/social/access";
+import { buildFeedPage, type FeedItem } from "../src/lib/feed";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const db = new PrismaClient({ adapter });
@@ -278,6 +279,18 @@ async function main() {
   console.log(
     `Blocage — symétrie A↔B : ${lot4.blockSymmetric} (attendu true — stocké dans un sens, appliqué dans les deux)`,
   );
+  console.log(
+    `Fil — entrée importée présente : ${lot4.feedHasImported} (attendu false — un import ne noie pas les abonnés)`,
+  );
+  console.log(
+    `Fil — critique et entrée de même texte : ${lot4.dedupCount} élément (attendu 1, l'entrée : ${lot4.dedupKeptEntry})`,
+  );
+  console.log(
+    `Fil — ordre antichronologique : ${lot4.feedDescending} (attendu true)`,
+  );
+  console.log(
+    `Modération — entrée masquée sortie du fil : ${lot4.hiddenLeftFeed} (attendu true)`,
+  );
 
   const ok =
     epCount === 24 &&
@@ -501,7 +514,83 @@ async function verifySocial(adminId: string, workId: string) {
     });
   }
 
+  // ── 9. Le fil : ni entrées importées, ni doublon critique/entrée ──
+  await db.user.update({
+    where: { id: adminId },
+    data: { visibility: "PUBLIC" },
+  });
+  await db.journalEntry.deleteMany({
+    where: { userId: adminId, reviewText: "Exactement le même texte, à la virgule près." },
+  });
+  await db.journalEntry.deleteMany({
+    where: { userId: adminId, importKey: "verify-imported" },
+  });
+
+  const DOUBLON = "Exactement le même texte, à la virgule près.";
+  // Saisie manuelle : **pas** d'importKey, sinon elle serait écartée du fil par
+  // la règle même qu'on vérifie plus bas. Le nettoyage se fait par identifiant.
+  const feedEntry = await db.journalEntry.create({
+    data: {
+      userId: adminId,
+      workId,
+      loggedAt: new Date(),
+      reviewText: DOUBLON,
+    },
+  });
+  // Une entrée importée : elle ne doit jamais atteindre le fil, sans quoi un
+  // import de 3 000 lignes noierait les abonnés.
+  const importedEntry = await db.journalEntry.create({
+    data: {
+      userId: adminId,
+      workId,
+      loggedAt: new Date(),
+      importKey: "verify-imported",
+    },
+  });
+  // Et la critique d'œuvre qui répète mot pour mot l'entrée.
+  await db.userWork.upsert({
+    where: { userId_workId: { userId: adminId, workId } },
+    update: { reviewText: DOUBLON, reviewedAt: new Date(), hiddenAt: null },
+    create: {
+      userId: adminId,
+      workId,
+      reviewText: DOUBLON,
+      reviewedAt: new Date(),
+    },
+  });
+
+  const feedSources = await fetchFeedSourcesForVerify(db, adminId);
+  const merged = buildFeedPage(feedSources, 50);
+
+  const feedHasImported = merged.items.some((i) => i.id === importedEntry.id);
+  // Le texte identique doit produire **un** élément, et ce doit être l'entrée
+  // de journal — elle porte date, sous-unité, revisionnage et étiquettes.
+  const dedupCount = merged.items.filter((i) => i.text === DOUBLON).length;
+  const dedupKeptEntry =
+    merged.items.find((i) => i.text === DOUBLON)?.kind === "entry";
+  const feedDescending = merged.items.every(
+    (item, i) => i === 0 || merged.items[i - 1].at >= item.at,
+  );
+
+  // ── 10. Masquage : le contenu sort du fil, sauf pour son auteur ──
+  await db.journalEntry.update({
+    where: { id: feedEntry.id },
+    data: { hiddenAt: new Date() },
+  });
+  const afterHide = buildFeedPage(
+    await fetchFeedSourcesForVerify(db, adminId),
+    50,
+  );
+  const hiddenLeftFeed = !afterHide.items.some((i) => i.id === feedEntry.id);
+
   // Nettoyage de sortie : on rend le compte administrateur à son état.
+  await db.journalEntry.deleteMany({
+    where: { id: { in: [feedEntry.id, importedEntry.id] } },
+  });
+  await db.userWork.updateMany({
+    where: { userId: adminId, workId },
+    data: { reviewText: null, reviewedAt: null },
+  });
   await db.user.update({
     where: { id: adminId },
     data: { visibility: previousVisibility },
@@ -520,6 +609,11 @@ async function verifySocial(adminId: string, workId: string) {
     privateBefore,
     privateAfter,
     blockSymmetric,
+    feedHasImported,
+    dedupCount,
+    dedupKeptEntry,
+    feedDescending,
+    hiddenLeftFeed,
     ok:
       followDuplicateBlocked &&
       likesAcrossTargets === 2 &&
@@ -529,8 +623,73 @@ async function verifySocial(adminId: string, workId: string) {
       reportSurvived &&
       privateBefore === false &&
       privateAfter === true &&
-      blockSymmetric,
+      blockSymmetric &&
+      feedHasImported === false &&
+      dedupCount === 1 &&
+      dedupKeptEntry &&
+      feedDescending &&
+      hiddenLeftFeed,
   };
+}
+
+/**
+ * Les trois sources du fil, telles que `feed-query.ts` les interroge.
+ *
+ * Les clauses sont recopiées ici plutôt qu'importées, parce que `getFeed` lit
+ * la session — et le script n'a pas de requête HTTP. C'est le seul endroit du
+ * lot où une requête est dupliquée : les filtres qui comptent (`importKey`,
+ * `hiddenAt`) sont donc vérifiés en tant que tels, et la fusion, elle, passe
+ * par la vraie `buildFeedPage`.
+ */
+async function fetchFeedSourcesForVerify(
+  client: PrismaClient,
+  userId: string,
+): Promise<FeedItem[][]> {
+  const before = new Date(Date.now() + 60_000);
+
+  const [entries, reviews] = await Promise.all([
+    client.journalEntry.findMany({
+      where: {
+        userId,
+        hiddenAt: null,
+        importKey: null,
+        createdAt: { lt: before },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 51,
+      select: { id: true, userId: true, createdAt: true, reviewText: true, workId: true },
+    }),
+    client.userWork.findMany({
+      where: {
+        userId,
+        hiddenAt: null,
+        reviewText: { not: null },
+        reviewedAt: { not: null, lt: before },
+      },
+      orderBy: { reviewedAt: "desc" },
+      take: 51,
+      select: { id: true, userId: true, reviewedAt: true, reviewText: true, workId: true },
+    }),
+  ]);
+
+  return [
+    entries.map((e) => ({
+      kind: "entry" as const,
+      id: e.id,
+      authorId: e.userId,
+      at: e.createdAt,
+      workId: e.workId,
+      text: e.reviewText,
+    })),
+    reviews.map((r) => ({
+      kind: "review" as const,
+      id: r.id,
+      authorId: r.userId,
+      at: r.reviewedAt!,
+      workId: r.workId,
+      text: r.reviewText,
+    })),
+  ];
 }
 
 /**

@@ -41,6 +41,9 @@ export default async function ReviewPermalinkPage({ params }: Props) {
     getSocialCounts(target, profile.id),
     getComments(target, profile.id),
   ]);
+  // On ne signale pas son propre contenu, ni sans compte.
+  const canReport =
+    counts.canInteract && view.author.viewer?.id !== view.author.profile.id;
 
   return (
     <div className="flex flex-col gap-4">
@@ -60,7 +63,13 @@ export default async function ReviewPermalinkPage({ params }: Props) {
       <ReviewCard
         review={view.review}
         username={username}
-        footer={<SocialFooter target={target} counts={counts} />}
+        footer={
+          <SocialFooter
+            target={target}
+            counts={counts}
+            canReport={canReport}
+          />
+        }
       />
 
       <CommentThread

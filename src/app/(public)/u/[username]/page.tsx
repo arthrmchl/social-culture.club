@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { BlockButton } from "@/components/social/BlockButton";
 import { FollowButton } from "@/components/social/FollowButton";
 import { ProfileHeader } from "@/components/social/ProfileHeader";
 import { PublicWorkGrid } from "@/components/social/PublicWorkGrid";
+import { ReportDialog } from "@/components/social/ReportDialog";
 import { Card, EmptyState } from "@/components/ui/Card";
 import { formatDate } from "@/lib/dates";
 import { getProfileView } from "@/lib/social/read";
@@ -29,7 +31,11 @@ export default async function ProfilPublicPage({ params }: Props) {
   // confirmerait l'existence du compte, et dirait à un bloqué qu'il l'est.
   if (!view) notFound();
 
-  const { access, profile } = view.access;
+  const { access, profile, viewer } = view.access;
+  // Bloquer et signaler demandent une session, et ne valent que sur autrui.
+  // Un profil bloqué n'arrive jamais ici — `resolveAccess` l'a déjà fermé —,
+  // d'où `blocked={false}` sur le bouton.
+  const canModerate = viewer !== null && viewer.id !== profile.id;
 
   return (
     <div>
@@ -43,10 +49,22 @@ export default async function ProfilPublicPage({ params }: Props) {
         }}
         follows={view.follows}
         action={
-          <FollowButton
-            targetUserId={profile.id}
-            initial={view.myFollow}
-          />
+          <div className="flex flex-col items-end gap-2">
+            <FollowButton targetUserId={profile.id} initial={view.myFollow} />
+            {canModerate && (
+              <>
+                <BlockButton
+                  targetUserId={profile.id}
+                  name={profile.name}
+                  blocked={false}
+                />
+                <ReportDialog
+                  subject={{ kind: "user", userId: profile.id }}
+                  label="Signaler ce compte"
+                />
+              </>
+            )}
+          </div>
         }
       />
 
