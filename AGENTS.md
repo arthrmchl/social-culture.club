@@ -20,14 +20,51 @@ Voir `README.md` pour la présentation et le démarrage.
 | `npm run build` | Build de production (typecheck inclus) |
 | `npm run lint` | ESLint |
 | `npm test` | Tests unitaires (Vitest) |
-| `npm run test:e2e` | Playwright (serveur dev requis sur `:3000`) |
+| `npm run test:e2e` | Playwright, sur une base de test jetable |
 | `npm run db:migrate` | `prisma migrate dev` |
 | `npm run db:seed` | Admin + invitation + genres |
-| `npm run verify` | Vérification de la couche données contre la vraie base |
+| `npm run verify` | Vérification de la couche données, sur une base jetable |
+| `npm run db:test:down` | Détruit une base de test restée debout |
 | `npm run backup` / `restore` | Sauvegarde et restauration (base + visuels) |
 
 `npm run verify` passe `--conditions=react-server` : le script importe des
 modules `server-only`, qui lèvent une erreur sans cette condition.
+
+## Base de test (harnais)
+
+- **Aucun test n'écrit dans la base de développement.** `test:e2e` et `verify`
+  passent par `scripts/with-test-db.ts` : montage d'une base neuve, exécution,
+  destruction dans un `finally`. C'est l'inverse de l'état antérieur, où
+  `verify.ts` laissait ses œuvres en base et où `lot3`/`lot4` en dépendaient
+  sans le dire.
+- **Un serveur Postgres à part, pas une base de plus** : service `db-test`
+  (docker-compose, port **5433**, `tmpfs`, profil `test`). Aucun `DROP` du
+  harnais ne peut atteindre `scc`, et `assertIsTestDatabase` refuse toute cible
+  hors 5433 / suffixe `_test`.
+- **`scripts/test-env.ts` est le point unique de vérité**, et un module
+  TypeScript versionné — pas un `.env.test`, que `.gitignore` exclurait. Les
+  variables passées aux processus enfants priment : ni `dotenv` ni Next ne
+  réécrivent une variable déjà définie, `.env` ne peut donc pas ramener la base
+  locale par la bande.
+- **Playwright lance l'application lui-même** (`webServer`, `next dev --port
+  3001`, `distDir = .next-test`) : un `npm run dev` local sur `:3000` continue
+  de tourner sans interférer. Les specs n'écrivent donc plus d'URL absolue —
+  `toHaveURL("/")` se résout contre `baseURL`.
+- **`prisma/fixtures.ts` est déterministe** : identifiants et dates figés, aucun
+  `randomUUID()` ni `Date.now()`. Les identifiants d'œuvres sont en `[a-z0-9]`
+  seulement, les specs assertant `/\/oeuvre\/[a-z0-9]+$/`. Les entrées de
+  journal portent `importKey: null`, sans quoi le fil du lot 4 les ignore, et
+  `needsCompletion: false`, sans quoi elles fausseraient le compte de
+  `/a-completer` vérifié par `lot2`.
+- **`e2e/global-setup.ts` ne purge plus rien** : sur une base neuve, il n'y a
+  rien à remettre à zéro. Il ne reste qu'une garde — bonne base, fixtures
+  présentes — pour qu'un `playwright test` lancé à la main échoue tout de suite
+  et lisiblement.
+- **Un environnement propre découvre des tests fragiles.** Deux hypothèses
+  cachées sont tombées au premier run : `/listes` affiche **deux** liens vers
+  `/listes/nouvelle` quand aucune liste n'existe, et la vue grille rend un lien
+  par œuvre (`WorkCard`) là où la vue liste en rend deux (`WorkRow`) — ne jamais
+  comparer des comptages de liens pris dans deux vues différentes.
 
 ## Conventions
 
@@ -223,8 +260,9 @@ modules `server-only`, qui lèvent une erreur sans cette condition.
   vit dans la barre **supérieure** — c'est un indicateur, pas une entrée.
 - **`User.username` est nullable** : sans pseudonyme, pas d'URL de profil.
   `updateVisibility` refuse `PUBLIC`/`MEMBERS` sans lui, et `/profil` le dit.
-- **E2E** : `e2e/global-setup.ts` purge l'état social des deux comptes seedés,
-  sinon le second run ne retrouve plus le bouton « Suivre ». Les gestes à
+- **E2E** : l'état social repart de zéro à chaque exécution parce que la base
+  elle-même est neuve (voir « Base de test ») — le second run retrouve donc le
+  bouton « Suivre » sans qu'aucune purge ne soit nécessaire. Les gestes à
   `confirm()` demandent un `page.once("dialog", …)`, et une action serveur
   déclenchée par `useTransition` doit être **attendue à l'écran** avant de
   naviguer.

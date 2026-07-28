@@ -1,86 +1,45 @@
-import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
-
-const E2E_CODE = "SCC-E2E-0001";
+import { TEST_DATABASE_URL, assertIsTestDatabase } from "../scripts/test-env";
 
 /**
- * Provisionne une invitation neuve et remet l'état social à zéro avant chaque
- * run E2E.
+ * Garde d'entrée des scénarios e2e.
  *
- * La purge sociale (lot 4) est indispensable à la rejouabilité : à la seconde
- * exécution, l'abonnement, le blocage et les notifications du run précédent
- * subsistent, et l'étape « Suivre » ne trouve plus son bouton. Elle ne touche
- * que les deux comptes du seed, et jamais les œuvres — celles-ci portent
- * l'historique de vérification des lots précédents.
+ * Ce fichier purgeait jusqu'ici l'état social des comptes seedés, faute de quoi
+ * la seconde exécution ne retrouvait plus le bouton « Suivre ». Cette purge n'a
+ * plus lieu d'être : `scripts/with-test-db.ts` monte une base **neuve** à
+ * chaque exécution et la détruit ensuite. Purger un état qui n'existe pas
+ * masquerait au contraire une base mal montée.
+ *
+ * Ne reste donc qu'une vérification : sommes-nous bien sur la base de test, et
+ * porte-t-elle son jeu de fixtures ? Un `playwright test` lancé à la main sans
+ * le harnais doit échouer ici, immédiatement et lisiblement — et non trente
+ * secondes plus tard sur un sélecteur introuvable.
  */
 export default async function globalSetup() {
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-
-  const admin = await pool.query(
-    `SELECT id FROM "user" WHERE role = 'admin' LIMIT 1`,
-  );
-  if (!admin.rows[0]) throw new Error("Admin introuvable — lancer le seed.");
-  const adminId = admin.rows[0].id as string;
-
-  const seeded = await pool.query(
-    `SELECT id FROM "user" WHERE username IN ('admin', 'membre')`,
-  );
-  const ids = seeded.rows.map((r) => r.id as string);
-  if (ids.length < 2) {
+  const url = process.env.DATABASE_URL;
+  if (url !== TEST_DATABASE_URL) {
     throw new Error(
-      "Second membre introuvable — relancer `npm run db:seed` (lot 4).",
+      "Les tests e2e ne s'exécutent que contre la base de test.\n" +
+        "Lancer `npm run test:e2e`, et non `playwright test` directement.",
     );
   }
+  assertIsTestDatabase(url);
 
-  await pool.query(`DELETE FROM "Invitation" WHERE code = $1`, [E2E_CODE]);
-  await pool.query(
-    `INSERT INTO "Invitation" (id, code, "invitedById", "expiresAt", "createdAt")
-     VALUES ($1, $2, $3, $4, now())`,
-    [randomUUID(), E2E_CODE, adminId, new Date(Date.now() + 1000 * 60 * 60 * 24)],
-  );
-
-  // ── État social des deux comptes seedés ─────────────────────
-  await pool.query(
-    `DELETE FROM "Follow" WHERE "followerId" = ANY($1) OR "followingId" = ANY($1)`,
-    [ids],
-  );
-  await pool.query(
-    `DELETE FROM "Block" WHERE "blockerId" = ANY($1) OR "blockedId" = ANY($1)`,
-    [ids],
-  );
-  await pool.query(
-    `DELETE FROM "Notification" WHERE "userId" = ANY($1) OR "actorId" = ANY($1)`,
-    [ids],
-  );
-  await pool.query(`DELETE FROM "Report" WHERE "reporterId" = ANY($1)`, [ids]);
-  await pool.query(`DELETE FROM "Comment" WHERE "authorId" = ANY($1)`, [ids]);
-  await pool.query(`DELETE FROM "SocialLike" WHERE "userId" = ANY($1)`, [ids]);
-  await pool.query(
-    `DELETE FROM "CorrectionSuggestion" WHERE "authorId" = ANY($1)`,
-    [ids],
-  );
-
-  // Le compte doit repartir ouvert : une étape du scénario le passe en privé.
-  await pool.query(
-    `UPDATE "user" SET visibility = 'PUBLIC', "showJournalPublicly" = true,
-                       "showStatsPublicly" = true
-     WHERE id = ANY($1)`,
-    [ids],
-  );
-  // Et rien ne doit rester masqué d'un run précédent.
-  await pool.query(
-    `UPDATE "JournalEntry" SET "hiddenAt" = NULL WHERE "userId" = ANY($1)`,
-    [ids],
-  );
-  await pool.query(
-    `UPDATE "List" SET "hiddenAt" = NULL, "isPrivate" = false
-     WHERE "userId" = ANY($1)`,
-    [ids],
-  );
-  await pool.query(
-    `UPDATE "UserWork" SET "hiddenAt" = NULL WHERE "userId" = ANY($1)`,
-    [ids],
-  );
-
-  await pool.end();
+  const pool = new Pool({ connectionString: url });
+  try {
+    const { rows } = await pool.query<{ users: string; works: string; invites: string }>(
+      `SELECT (SELECT count(*) FROM "user")                          AS users,
+              (SELECT count(*) FROM "Work")                          AS works,
+              (SELECT count(*) FROM "Invitation" WHERE code = 'SCC-E2E-0001') AS invites`,
+    );
+    const { users, works, invites } = rows[0]!;
+    if (Number(users) < 2 || Number(works) < 3 || Number(invites) < 1) {
+      throw new Error(
+        `Base de test incomplète (${users} comptes, ${works} œuvres, ${invites} invitation).\n` +
+          "Remonter le harnais : `npm run db:test:down` puis `npm run test:e2e`.",
+      );
+    }
+  } finally {
+    await pool.end();
+  }
 }

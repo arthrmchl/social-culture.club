@@ -69,7 +69,9 @@ npm run dev            # http://localhost:3000
 | `npm run dev` | Serveur de développement |
 | `npm run build` / `start` | Build et exécution de production |
 | `npm test` | Tests unitaires (Vitest) |
-| `npm run verify` | Vérification de la couche données contre la vraie base |
+| `npm run test:e2e` | Parcours bout en bout (Playwright), sur une base jetable |
+| `npm run test:e2e:keep` | Idem, mais laisse la base debout pour inspection |
+| `npm run verify` | Vérification de la couche données, sur une base jetable |
 | `npm run backup` | Sauvegarde base + visuels (I5) |
 | `npm run restore` | Restauration d'une sauvegarde |
 | `npm run lint` | ESLint |
@@ -77,6 +79,37 @@ npm run dev            # http://localhost:3000
 | `npm run db:migrate` | Applique les migrations Prisma |
 | `npm run db:seed` | Peuple la base (admin, invitation, genres) |
 | `npm run db:studio` | Prisma Studio |
+| `npm run db:test:down` | Détruit la base de test restée debout |
+
+## Tests
+
+Aucun test n'écrit dans la base de développement. `npm run test:e2e` et
+`npm run verify` passent par `scripts/with-test-db.ts`, qui **monte une base
+neuve, l'utilise, puis la détruit** :
+
+```
+docker compose up -d db-test        conteneur dédié, port 5433, tmpfs (en RAM)
+DROP / CREATE DATABASE scc_test
+prisma migrate deploy               les migrations telles qu'elles sont versionnées
+prisma/seed.ts + prisma/fixtures.ts comptes, genres, catalogue de référence
+… la commande …                     Playwright lance lui-même Next sur :3001
+docker compose rm -sf db-test       même en cas d'échec ou d'interruption
+```
+
+Un `npm run dev` local sur `:3000` peut continuer à tourner pendant les tests :
+autre port, autre base, autre répertoire de build (`.next-test`).
+
+La configuration du harnais vit dans **`scripts/test-env.ts`**, un module
+versionné — et non un `.env.test`, que `.gitignore` exclurait. Les fixtures
+(`prisma/fixtures.ts`) sont **déterministes** : mêmes identifiants, mêmes dates,
+donc le même état de départ à chaque exécution.
+
+```bash
+npm run test:e2e                       # tout le parcours, base montée puis détruite
+npm run test:e2e -- e2e/lot3.spec.ts   # un seul scénario
+npm run test:e2e:keep                  # garde la base : psql …@localhost:5433/scc_test
+npm run db:test:down                   # nettoyage après un test:e2e:keep
+```
 
 ## Architecture
 
@@ -85,6 +118,7 @@ prisma/
   schema.prisma          Modèle unifié (œuvre, sous-unités, éditions, suivi, auth)
   migrations/            Init + pg_trgm (index GIN géré par Prisma) + suivi lot 1
   seed.ts                Admin + invitation + genres
+  fixtures.ts            Catalogue de référence déterministe (base de test)
 src/
   lib/                   db, auth, session, storage, search, text, generators, media,
                          rating, status, progress, tracking, markdown, dates,
@@ -107,7 +141,8 @@ src/
   app/api/uploads/[id]/  Service des visuels téléversés
   app/api/import/upload/ Téléversement des fichiers d'import (lot 2)
   app/api/export/        Export JSON et CSV par entité (lot 2)
-scripts/                 verify (vérification données), backup, restore
+scripts/                 verify (vérification données), backup, restore,
+                         test-env / test-db / with-test-db (base de test jetable)
   proxy.ts               Protection optimiste des routes (ex-middleware)
 ```
 
@@ -244,8 +279,11 @@ Vérification de la couche données (lots 0 à 2) sans le navigateur :
 ```bash
 npm run verify              # œuvres, auto-statuts, recherche floue, import + ré-import idempotent
 npm test                    # tests unitaires (rating, status, progress, import, export…)
-npm run test:e2e            # parcours bout en bout Playwright (serveur dev requis sur :3000)
+npm run test:e2e            # parcours bout en bout Playwright
 ```
+
+`verify` et `test:e2e` montent chacun leur base jetable (voir « Tests ») : rien
+à démarrer à la main, et la base de développement reste intacte.
 
 ## Sauvegardes (I5)
 

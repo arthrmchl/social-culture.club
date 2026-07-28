@@ -12,5 +12,27 @@ services:
     volumes:
       - scc-pgdata:/var/lib/postgresql/data
 
+  # Serveur dédié aux tests (scripts/test-db.ts). Un **autre** serveur, et pas
+  # une base de plus dans le premier : c'est ce qui rend impossible qu'un DROP
+  # du harnais atteigne les données de travail.
+  #
+  # `tmpfs` au lieu d'un volume : la base vit en mémoire et ne survit pas au
+  # conteneur. Rien à nettoyer sur le disque, et un run interrompu ne laisse pas
+  # d'état derrière lui. Pas de `restart` non plus — un conteneur de test ne
+  # redémarre pas tout seul au réveil de la machine.
+  db-test:
+    image: postgres:17-alpine
+    container_name: scc-postgres-test
+    environment:
+      POSTGRES_USER: scc
+      POSTGRES_PASSWORD: scc
+      POSTGRES_DB: postgres
+    ports:
+      - "5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    profiles:
+      - test
+
 volumes:
   scc-pgdata:

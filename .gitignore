@@ -18,7 +18,11 @@
 
 # next.js
 /.next/
+/.next-test/
 /out/
+
+# harnais de test (base jetable, visuels téléversés pendant les tests)
+/.test-tmp/
 
 # production
 /build
