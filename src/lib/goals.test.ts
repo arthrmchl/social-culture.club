@@ -10,12 +10,11 @@ import {
 import { MEDIA_ORDER } from "./media";
 
 describe("typesForScope", () => {
-  it("recouvre les quatre lectures", () => {
+  it("recouvre les trois lectures", () => {
     expect(typesForScope("READINGS")).toEqual([
       "BOOK",
       "BD_SERIES",
       "MANGA_SERIES",
-      "ONE_SHOT",
     ]);
   });
 

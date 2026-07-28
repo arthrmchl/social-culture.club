@@ -173,7 +173,6 @@ enum WorkType {
   BOOK
   BD_SERIES
   MANGA_SERIES
-  ONE_SHOT
 }
 
 model Work {
@@ -185,7 +184,7 @@ model Work {
   year            Int? // obligatoire à la création manuelle (D31) ; inconnue possible à l'import (lot 2)
   synopsis        String?
   durationMinutes Int? // films / épisodes
-  pageCount       Int? // livres / one-shots
+  pageCount       Int? // livres
   isbn            String? // champ libre saisi (D6 : jamais utilisé pour un lookup externe)
   metadata        Json     @default("{}") // ex. { "format": "TV" } pour les animés
 
@@ -923,18 +922,17 @@ model Quote {
 /// Un énuméré non nul plutôt qu'un `WorkType?` : « toutes confondues » serait
 /// un NULL, que PostgreSQL laisse cohabiter en double dans un index unique —
 /// l'objectif global n'aurait aucun garde-fou en base. READINGS répond en prime
-/// à l'objectif que l'on se fixe vraiment (« 50 lectures »), plutôt que quatre
+/// à l'objectif que l'on se fixe vraiment (« 50 lectures »), plutôt que trois
 /// objectifs séparés.
 enum GoalScope {
   ALL
-  READINGS // livres + BD + mangas + one-shots — activé par défaut (D12)
+  READINGS // livres + BD + mangas — activé par défaut (D12)
   FILM
   SERIES
   ANIME
   BOOK
   BD_SERIES
   MANGA_SERIES
-  ONE_SHOT
 }
 
 /// Objectif annuel paramétrable par média (L5, D12).

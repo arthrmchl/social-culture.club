@@ -104,7 +104,6 @@ function typeScore(a: WorkType, b: WorkType): number {
   if (a === b) return 1;
   const proches: WorkType[][] = [
     ["SERIES", "ANIME"],
-    ["BOOK", "ONE_SHOT"],
     ["BD_SERIES", "MANGA_SERIES"],
   ];
   return proches.some((g) => g.includes(a) && g.includes(b)) ? 0.7 : 0;

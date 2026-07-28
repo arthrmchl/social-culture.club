@@ -27,7 +27,7 @@ const quoteSchema = z.object({
 export type QuoteInput = z.input<typeof quoteSchema>;
 
 const NOT_A_READING =
-  "Les citations ne concernent que les lectures : livres, BD, mangas et one-shots.";
+  "Les citations ne concernent que les lectures : livres, BD et mangas.";
 
 export async function createQuote(input: QuoteInput): Promise<ActionResult> {
   const user = await requireUser();

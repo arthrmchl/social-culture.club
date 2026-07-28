@@ -52,13 +52,6 @@ export const MEDIA: Record<WorkType, MediaMeta> = {
     emoji: "🀄",
     subUnit: "tomes",
   },
-  ONE_SHOT: {
-    type: "ONE_SHOT",
-    label: "One-shot",
-    plural: "One-shots",
-    emoji: "📕",
-    subUnit: null,
-  },
 };
 
 export const MEDIA_ORDER: WorkType[] = [
@@ -68,7 +61,6 @@ export const MEDIA_ORDER: WorkType[] = [
   "BOOK",
   "BD_SERIES",
   "MANGA_SERIES",
-  "ONE_SHOT",
 ];
 
 export const WORK_TYPES = MEDIA_ORDER;
@@ -91,14 +83,14 @@ export function usesTomes(type: WorkType): boolean {
   return MEDIA[type].subUnit === "tomes";
 }
 
-/** Média suivi à la page (livres, one-shots) — progression L2. */
+/** Média suivi à la page (livres) — progression L2. */
 export function usesPages(type: WorkType): boolean {
-  return type === "BOOK" || type === "ONE_SHOT";
+  return type === "BOOK";
 }
 
 /**
- * Une lecture, au sens de D9 et D12 : livres, BD, mangas, one-shots. C'est le
- * périmètre des citations (L3) et de l'objectif « lectures » (L5).
+ * Une lecture, au sens de D9 et D12 : livres, BD, mangas. C'est le périmètre
+ * des citations (L3) et de l'objectif « lectures » (L5).
  */
 export function isReading(type: WorkType): boolean {
   return usesPages(type) || usesTomes(type);

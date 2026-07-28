@@ -43,6 +43,10 @@ modules `server-only`, qui lèvent une erreur sans cette condition.
   suppression manuelle des enfants.
 - **Notation** : échelle d'affichage 0,5–5 étoiles par demi-point, **stockée sur
   10** en base. Convertir uniquement à l'affichage/saisie via `src/lib/rating.ts`.
+- **Pas de type « one-shot »** : un manga en un volume est un `MANGA_SERIES` à
+  un tome, suivi au tome comme les autres. Un type dédié aurait suivi la page
+  (`usesPages`) alors que tout le reste du manga suit le tome (`usesTomes`).
+  `usesPages` ne vaut donc que pour `BOOK`.
 - **Logique pure et testée** dans `src/lib/` (`rating`, `status`, `progress`,
   `text`, `generators`) avec un `*.test.ts` voisin. `tracking.ts`, `search.ts`,
   `session.ts` sont `server-only`.

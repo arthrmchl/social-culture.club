@@ -21,7 +21,6 @@ export const GOAL_SCOPES: GoalScope[] = [
   "BOOK",
   "BD_SERIES",
   "MANGA_SERIES",
-  "ONE_SHOT",
 ];
 
 /** La portée activée par défaut (D12 : les lectures). */

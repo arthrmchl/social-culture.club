@@ -72,7 +72,7 @@ export function WorkForm({
   const showEpisodes = media.subUnit === "episodes";
   const showTomes = media.subUnit === "tomes";
   const isFilm = type === "FILM";
-  const isBook = type === "BOOK" || type === "ONE_SHOT";
+  const isBook = type === "BOOK";
 
   return (
     <form action={formAction} className="flex flex-col gap-6">
@@ -294,10 +294,10 @@ export function WorkForm({
               name="tomesCount"
               type="number"
               min={0}
-              defaultValue={0}
+              defaultValue={1}
             />
           </div>
-          <FieldHint>Ex. série de 23 tomes.</FieldHint>
+          <FieldHint>Ex. série de 23 tomes ; 1 pour un one-shot.</FieldHint>
         </Card>
       )}
 
