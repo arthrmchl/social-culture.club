@@ -13,7 +13,12 @@ import {
   MAX_COMMENTS_PER_MINUTE,
   validateCommentBody,
 } from "@/lib/comments";
-import { revalidateFeed, revalidateSocialTarget } from "./revalidate";
+import { notify } from "@/lib/social/notify";
+import {
+  revalidateFeed,
+  revalidateNotifications,
+  revalidateSocialTarget,
+} from "./revalidate";
 import type { ActionResult } from "./status";
 
 /**
@@ -57,17 +62,33 @@ export async function addComment(
   });
   if (recent >= MAX_COMMENTS_PER_MINUTE) return { error: COMMENT_TOO_FAST };
 
-  const comment = await db.comment.create({
-    data: {
-      authorId: user.id,
-      body: check.body,
-      ...targetColumns(parsedTarget.data),
-    },
-    select: { id: true },
+  const comment = await db.$transaction(async (tx) => {
+    const created = await tx.comment.create({
+      data: {
+        authorId: user.id,
+        body: check.body,
+        ...targetColumns(parsedTarget.data),
+      },
+      select: { id: true },
+    });
+
+    // Dans la même transaction : pas de notification annonçant un commentaire
+    // qui n'aurait pas été écrit.
+    await notify(tx, {
+      userId: gate.resolved.ownerId,
+      actorId: user.id,
+      type: "COMMENT",
+      target: parsedTarget.data,
+      commentId: created.id,
+      workId: gate.resolved.workId ?? undefined,
+    });
+
+    return created;
   });
 
   revalidateSocialTarget(gate.resolved);
   revalidateFeed();
+  revalidateNotifications();
   return { ok: true, id: comment.id };
 }
 

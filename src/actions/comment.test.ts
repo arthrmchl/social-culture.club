@@ -11,6 +11,11 @@ const requireUser = vi.fn();
 const revalidatePath = vi.fn();
 const resolveInteractable = vi.fn();
 const resolveTarget = vi.fn();
+const notify = vi.fn();
+
+const tx = {
+  comment: { create: (...a: unknown[]) => commentCreate(...a) },
+};
 
 vi.mock("@/lib/db", () => ({
   db: {
@@ -22,7 +27,12 @@ vi.mock("@/lib/db", () => ({
       update: (...a: unknown[]) => commentUpdate(...a),
       delete: (...a: unknown[]) => commentDelete(...a),
     },
+    $transaction: (fn: (t: typeof tx) => Promise<unknown>) => fn(tx),
   },
+}));
+
+vi.mock("@/lib/social/notify", () => ({
+  notify: (...a: unknown[]) => notify(...a),
 }));
 
 vi.mock("@/lib/session", () => ({
@@ -137,6 +147,26 @@ describe("addComment — garde et débit", () => {
   it("accepte juste en dessous du plafond", async () => {
     commentCount.mockResolvedValue(MAX_COMMENTS_PER_MINUTE - 1);
     expect(await addComment(ENTRY, "Bonjour")).toEqual({ ok: true, id: "c1" });
+  });
+
+  it("notifie le propriétaire dans la transaction du commentaire", async () => {
+    // Pas de notification annonçant un commentaire qui n'aurait pas été écrit.
+    await addComment(ENTRY, "Bonjour");
+    expect(notify).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        userId: "u2",
+        actorId: "u1",
+        type: "COMMENT",
+        commentId: "c1",
+      }),
+    );
+  });
+
+  it("ne notifie rien quand la garde refuse", async () => {
+    resolveInteractable.mockResolvedValue({ error: "Refusé." });
+    await addComment(ENTRY, "Bonjour");
+    expect(notify).not.toHaveBeenCalled();
   });
 });
 

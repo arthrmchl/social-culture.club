@@ -9,7 +9,12 @@ import {
   targetWhere,
   type SocialTarget,
 } from "@/lib/social-target";
-import { revalidateFeed, revalidateSocialTarget } from "./revalidate";
+import { notify, unnotify } from "@/lib/social/notify";
+import {
+  revalidateFeed,
+  revalidateNotifications,
+  revalidateSocialTarget,
+} from "./revalidate";
 
 /**
  * J'aime social (lot 4, P3).
@@ -50,9 +55,24 @@ export async function toggleSocialLike(
 
     if (existing) {
       await tx.socialLike.delete({ where: { id: existing.id } });
+      // Un j'aime qu'on retire ne laisse pas de trace : c'est le pendant du
+      // regroupement des notifications identiques.
+      await unnotify(tx, {
+        userId: gate.resolved.ownerId,
+        actorId: user.id,
+        type: "LIKE",
+        target: parsed.data,
+      });
     } else {
       await tx.socialLike.create({
         data: { userId: user.id, ...targetColumns(parsed.data) },
+      });
+      await notify(tx, {
+        userId: gate.resolved.ownerId,
+        actorId: user.id,
+        type: "LIKE",
+        target: parsed.data,
+        workId: gate.resolved.workId ?? undefined,
       });
     }
 
@@ -64,5 +84,6 @@ export async function toggleSocialLike(
 
   revalidateSocialTarget(gate.resolved);
   revalidateFeed();
+  revalidateNotifications();
   return { ok: true, liked, count };
 }

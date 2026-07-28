@@ -3,7 +3,8 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
-import { revalidateProfile } from "./revalidate";
+import { notify } from "@/lib/social/notify";
+import { revalidateNotifications, revalidateProfile } from "./revalidate";
 
 /**
  * Réglages de visibilité du compte (lot 4, D26, P5).
@@ -75,13 +76,25 @@ export async function updateVisibility(
       // qu'aucun test unitaire ne verrait mais qu'un usage réel révèle tout de
       // suite : le demandeur voit le profil (il est ouvert) et garde pourtant
       // un fil vide, parce que le fil ne lit que les ACCEPTED.
+      const waiting = await tx.follow.findMany({
+        where: { followingId: user.id, status: "PENDING" },
+        select: { followerId: true },
+      });
       await tx.follow.updateMany({
         where: { followingId: user.id, status: "PENDING" },
         data: { status: "ACCEPTED", acceptedAt: new Date() },
       });
+      for (const w of waiting) {
+        await notify(tx, {
+          userId: w.followerId,
+          actorId: user.id,
+          type: "FOLLOW_ACCEPTED",
+        });
+      }
     }
   });
 
   revalidateProfile(me.username);
+  revalidateNotifications();
   return { success: true };
 }

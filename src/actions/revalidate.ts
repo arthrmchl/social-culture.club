@@ -57,6 +57,17 @@ export function revalidateFeed(): void {
 }
 
 /**
+ * La boîte de réception et le compteur de la barre supérieure (lot 4, P3).
+ *
+ * Le compteur est calculé dans `(app)/layout.tsx`, donc sur **toutes** les
+ * pages de l'application : revalider la racine ne suffirait pas.
+ */
+export function revalidateNotifications(): void {
+  revalidatePath("/notifications");
+  revalidatePath("/", "layout");
+}
+
+/**
  * Le permalien d'une cible sociale et la page qui la liste (lot 4, P3).
  *
  * Prend une cible **déjà résolue** — `resolveTarget` a chargé son propriétaire,

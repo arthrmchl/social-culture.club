@@ -44,10 +44,45 @@ function isActive(pathname: string, href: string): boolean {
   return pathname.startsWith(href);
 }
 
+/**
+ * La cloche de notifications (lot 4, P3).
+ *
+ * Elle vit dans la barre **supérieure**, donc visible au mobile aussi, sans
+ * rompre la règle des six entrées : c'est un indicateur, pas une entrée de
+ * navigation. La barre du bas reste pleine par construction.
+ */
+function NotificationBell({ count }: { count: number }) {
+  return (
+    <Link
+      href="/notifications"
+      aria-label={
+        count > 0
+          ? `Notifications — ${count} non ${count === 1 ? "lue" : "lues"}`
+          : "Notifications"
+      }
+      className="relative rounded-md px-2 py-1 text-muted hover:bg-elevated hover:text-foreground"
+    >
+      <span aria-hidden className="text-lg leading-none">
+        🔔
+      </span>
+      {count > 0 && (
+        <span
+          aria-hidden
+          className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-[10px] font-semibold leading-4 text-accent-foreground"
+        >
+          {count > 99 ? "99+" : count}
+        </span>
+      )}
+    </Link>
+  );
+}
+
 export function NavBar({
   displayName,
   isAdmin,
+  unreadCount = 0,
 }: {
+  unreadCount?: number;
   displayName: string;
   isAdmin: boolean;
 }) {
@@ -97,6 +132,7 @@ export function NavBar({
             )}
           </nav>
           <div className="ml-auto flex items-center gap-2">
+            <NotificationBell count={unreadCount} />
             <ThemeToggle />
             <span className="hidden text-sm text-muted sm:inline">
               {displayName}

@@ -3,7 +3,12 @@
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { assertCanInteract } from "@/lib/social/guard";
-import { revalidateFeed, revalidateProfile } from "./revalidate";
+import { notify } from "@/lib/social/notify";
+import {
+  revalidateFeed,
+  revalidateNotifications,
+  revalidateProfile,
+} from "./revalidate";
 import type { ActionResult } from "./status";
 
 /**
@@ -36,25 +41,36 @@ export async function followUser(targetUserId: string): Promise<ActionResult> {
 
   const pending = target.visibility === "PRIVATE";
 
-  await db.follow.upsert({
-    where: {
-      followerId_followingId: {
+  await db.$transaction(async (tx) => {
+    await tx.follow.upsert({
+      where: {
+        followerId_followingId: {
+          followerId: user.id,
+          followingId: targetUserId,
+        },
+      },
+      // Un second clic ne rétrograde pas un abonnement déjà accepté en attente.
+      update: {},
+      create: {
         followerId: user.id,
         followingId: targetUserId,
+        status: pending ? "PENDING" : "ACCEPTED",
+        acceptedAt: pending ? null : new Date(),
       },
-    },
-    // Un second clic ne rétrograde pas un abonnement déjà accepté en attente.
-    update: {},
-    create: {
-      followerId: user.id,
-      followingId: targetUserId,
-      status: pending ? "PENDING" : "ACCEPTED",
-      acceptedAt: pending ? null : new Date(),
-    },
+    });
+
+    // Dans la même transaction : un abonnement qui échoue ne doit pas laisser
+    // derrière lui une notification annonçant un abonné qui n'existe pas.
+    await notify(tx, {
+      userId: targetUserId,
+      actorId: user.id,
+      type: pending ? "FOLLOW_REQUEST" : "FOLLOW",
+    });
   });
 
   revalidateProfile(target.username);
   revalidateFeed();
+  revalidateNotifications();
   return { ok: true };
 }
 
@@ -92,16 +108,24 @@ export async function acceptFollowRequest(
 
   const follow = await db.follow.findFirst({
     where: { id: followId, followingId: user.id, status: "PENDING" },
-    select: { id: true },
+    select: { id: true, followerId: true },
   });
   if (!follow) return { error: "Demande introuvable." };
 
-  await db.follow.update({
-    where: { id: followId },
-    data: { status: "ACCEPTED", acceptedAt: new Date() },
+  await db.$transaction(async (tx) => {
+    await tx.follow.update({
+      where: { id: followId },
+      data: { status: "ACCEPTED", acceptedAt: new Date() },
+    });
+    await notify(tx, {
+      userId: follow.followerId,
+      actorId: user.id,
+      type: "FOLLOW_ACCEPTED",
+    });
   });
 
   revalidateFeed();
+  revalidateNotifications();
   return { ok: true };
 }
 

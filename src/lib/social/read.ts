@@ -2,8 +2,12 @@ import "server-only";
 
 import { db } from "@/lib/db";
 import { canSeeContent } from "@/lib/visibility";
-import { targetWhere, type SocialTarget } from "@/lib/social-target";
-import type { WorkType } from "@/generated/prisma/enums";
+import {
+  targetHref,
+  targetWhere,
+  type SocialTarget,
+} from "@/lib/social-target";
+import type { NotificationType, WorkType } from "@/generated/prisma/enums";
 import { blockedUserIds, isOwnerOrAdmin, type AccessTo } from "./access";
 import { accessTo, accessToUsername, getViewer } from "./viewer";
 
@@ -562,6 +566,122 @@ export async function getSocialCounts(
     likedByMe: mine !== null,
     canInteract: acc?.access.canInteract ?? false,
   };
+}
+
+export type NotificationData = {
+  id: string;
+  type: NotificationType;
+  createdAt: Date;
+  readAt: Date | null;
+  actor: PublicMember | null;
+  /** Permalien de la cible, ou du profil pour un abonnement. `null` si perdu. */
+  href: string | null;
+  /** Titre de l'œuvre ou de la liste concernée, pour situer la notification. */
+  label: string | null;
+};
+
+/**
+ * La boîte de réception (P3).
+ *
+ * Rien n'est marqué comme lu au passage : un Server Component ne doit pas
+ * écrire, et un effet de bord au rendu serait irreproductible en test. Le
+ * marquage est un geste explicite.
+ */
+export async function getNotifications(
+  userId: string,
+  take = 50,
+): Promise<NotificationData[]> {
+  const rows = await db.notification.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    take,
+    select: {
+      id: true,
+      type: true,
+      createdAt: true,
+      readAt: true,
+      actor: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          image: true,
+          bio: true,
+        },
+      },
+      journalEntryId: true,
+      listId: true,
+      userWorkId: true,
+      workId: true,
+      list: { select: { slug: true, title: true, user: { select: { username: true } } } },
+      journalEntry: {
+        select: {
+          work: { select: { titleFr: true } },
+          user: { select: { username: true } },
+        },
+      },
+      userWork: {
+        select: {
+          workId: true,
+          work: { select: { titleFr: true } },
+          user: { select: { username: true } },
+        },
+      },
+      work: { select: { titleFr: true } },
+    },
+  });
+
+  return rows.map((n) => {
+    let href: string | null = null;
+    let label: string | null = null;
+
+    if (n.journalEntryId && n.journalEntry) {
+      href = targetHref(
+        { kind: "entry", id: n.journalEntryId },
+        { username: n.journalEntry.user.username ?? "" },
+      );
+      label = n.journalEntry.work.titleFr;
+    } else if (n.listId && n.list) {
+      href = targetHref(
+        { kind: "list", id: n.listId },
+        { username: n.list.user.username ?? "", slug: n.list.slug },
+      );
+      label = n.list.title;
+    } else if (n.userWorkId && n.userWork) {
+      href = targetHref(
+        { kind: "review", id: n.userWorkId },
+        {
+          username: n.userWork.user.username ?? "",
+          workId: n.userWork.workId,
+        },
+      );
+      label = n.userWork.work.titleFr;
+    } else if (n.workId && n.work) {
+      // Une proposition de correction (D30) mène à la fiche, pas à un profil.
+      href = `/oeuvre/${n.workId}`;
+      label = n.work.titleFr;
+    } else if (n.actor?.username) {
+      // Abonnements : la cible est le profil de l'acteur.
+      href = `/u/${n.actor.username}`;
+    }
+
+    return {
+      id: n.id,
+      type: n.type,
+      createdAt: n.createdAt,
+      readAt: n.readAt,
+      actor: n.actor,
+      href,
+      label,
+    };
+  });
+}
+
+/** Le compteur de la barre supérieure — une requête indexée par page. */
+export async function countUnreadNotifications(
+  userId: string,
+): Promise<number> {
+  return db.notification.count({ where: { userId, readAt: null } });
 }
 
 export type CommentData = {

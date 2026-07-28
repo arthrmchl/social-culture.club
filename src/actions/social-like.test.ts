@@ -8,6 +8,8 @@ const likeCount = vi.fn();
 const requireUser = vi.fn();
 const revalidatePath = vi.fn();
 const resolveInteractable = vi.fn();
+const notify = vi.fn();
+const unnotify = vi.fn();
 
 const tx = {
   socialLike: {
@@ -26,6 +28,11 @@ vi.mock("@/lib/session", () => ({ requireUser: () => requireUser() }));
 
 vi.mock("@/lib/social/guard", () => ({
   resolveInteractable: (...a: unknown[]) => resolveInteractable(...a),
+}));
+
+vi.mock("@/lib/social/notify", () => ({
+  notify: (...a: unknown[]) => notify(...a),
+  unnotify: (...a: unknown[]) => unnotify(...a),
 }));
 
 vi.mock("next/cache", () => ({
@@ -147,5 +154,38 @@ describe("toggleSocialLike — bascule", () => {
     expect(await toggleSocialLike({ kind: "entry", id: "e1" })).toMatchObject({
       count: 42,
     });
+  });
+});
+
+describe("toggleSocialLike — notifications", () => {
+  it("notifie le propriétaire du contenu à la pose", async () => {
+    likeFindFirst.mockResolvedValue(null);
+    await toggleSocialLike({ kind: "entry", id: "e1" });
+
+    expect(notify).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ userId: "u2", actorId: "u1", type: "LIKE" }),
+    );
+    expect(unnotify).not.toHaveBeenCalled();
+  });
+
+  it("retire la notification au retrait du j'aime", async () => {
+    // Un j'aime qu'on retire ne laisse pas de trace : le pendant du
+    // regroupement des notifications identiques.
+    likeFindFirst.mockResolvedValue({ id: "sl1" });
+    await toggleSocialLike({ kind: "entry", id: "e1" });
+
+    expect(unnotify).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ userId: "u2", actorId: "u1", type: "LIKE" }),
+    );
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("ne notifie rien quand la garde refuse", async () => {
+    resolveInteractable.mockResolvedValue({ error: "Refusé." });
+    await toggleSocialLike({ kind: "entry", id: "e1" });
+    expect(notify).not.toHaveBeenCalled();
+    expect(unnotify).not.toHaveBeenCalled();
   });
 });

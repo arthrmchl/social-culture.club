@@ -10,6 +10,14 @@ const followDeleteMany = vi.fn();
 const requireUser = vi.fn();
 const revalidatePath = vi.fn();
 const assertCanInteract = vi.fn();
+const notify = vi.fn();
+
+const tx = {
+  follow: {
+    upsert: (...a: unknown[]) => followUpsert(...a),
+    update: (...a: unknown[]) => followUpdate(...a),
+  },
+};
 
 vi.mock("@/lib/db", () => ({
   db: {
@@ -21,6 +29,7 @@ vi.mock("@/lib/db", () => ({
       delete: (...a: unknown[]) => followDelete(...a),
       deleteMany: (...a: unknown[]) => followDeleteMany(...a),
     },
+    $transaction: (fn: (t: typeof tx) => Promise<unknown>) => fn(tx),
   },
 }));
 
@@ -28,6 +37,10 @@ vi.mock("@/lib/session", () => ({ requireUser: () => requireUser() }));
 
 vi.mock("@/lib/social/guard", () => ({
   assertCanInteract: (...a: unknown[]) => assertCanInteract(...a),
+}));
+
+vi.mock("@/lib/social/notify", () => ({
+  notify: (...a: unknown[]) => notify(...a),
 }));
 
 vi.mock("next/cache", () => ({
@@ -133,7 +146,39 @@ describe("followUser", () => {
 
     expect(await followUser("u2")).toEqual({ error: "Refusé." });
     expect(followUpsert).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
     expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("notifie FOLLOW sur un compte ouvert, FOLLOW_REQUEST sur un compte privé", async () => {
+    // La notification est créée dans la transaction de l'abonnement : un
+    // abonnement qui échoue ne doit pas annoncer un abonné inexistant.
+    userFindUnique.mockResolvedValue({
+      id: "u2",
+      username: "alice",
+      visibility: "PUBLIC",
+      banned: false,
+    });
+    await followUser("u2");
+    expect(notify).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ userId: "u2", actorId: "u1", type: "FOLLOW" }),
+    );
+
+    vi.clearAllMocks();
+    requireUser.mockResolvedValue(me);
+    assertCanInteract.mockResolvedValue({ ok: true });
+    userFindUnique.mockResolvedValue({
+      id: "u2",
+      username: "alice",
+      visibility: "PRIVATE",
+      banned: false,
+    });
+    await followUser("u2");
+    expect(notify).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ type: "FOLLOW_REQUEST" }),
+    );
   });
 });
 
@@ -164,13 +209,17 @@ describe("acceptFollowRequest", () => {
     );
   });
 
-  it("passe en ACCEPTED et horodate", async () => {
-    followFindFirst.mockResolvedValue({ id: "f1" });
+  it("passe en ACCEPTED, horodate et prévient le demandeur", async () => {
+    followFindFirst.mockResolvedValue({ id: "f1", followerId: "u9" });
     expect(await acceptFollowRequest("f1")).toEqual({ ok: true });
 
     const data = followUpdate.mock.calls[0][0].data;
     expect(data.status).toBe("ACCEPTED");
     expect(data.acceptedAt).toBeInstanceOf(Date);
+    expect(notify).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ userId: "u9", type: "FOLLOW_ACCEPTED" }),
+    );
   });
 
   it("refuse une demande qui ne m'est pas adressée, sans rien écrire", async () => {

@@ -98,6 +98,15 @@ export default async function ProfilPage() {
             </span>
           </Link>
           <Link
+            href="/notifications"
+            className="px-4 py-3 text-sm hover:bg-elevated"
+          >
+            🔔 Mes notifications
+            <span className="block text-xs text-muted">
+              Abonnements, j&apos;aime et commentaires
+            </span>
+          </Link>
+          <Link
             href="/confidentialite"
             className="px-4 py-3 text-sm hover:bg-elevated"
           >
