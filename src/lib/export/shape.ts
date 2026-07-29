@@ -30,8 +30,14 @@ export const EXPORT_FORMAT = "social-culture.club";
  * du document plutôt que d'y rester vide — et la version le dit, sans quoi un
  * export récent serait indiscernable d'un export où l'utilisateur n'en avait
  * simplement jamais saisi.
+ *
+ * Version 6 (lot 6) : l'œuvre gagne son année de fin, les **tomes** passent
+ * sous l'édition qui les publie — avec l'étendue « couverte » d'une intégrale,
+ * qui n'a plus lieu d'être — et l'import disparaît du document avec la
+ * fonctionnalité. Un lecteur qui trouverait `tomes` à la racine d'une œuvre
+ * sait ainsi qu'il lit un export antérieur.
  */
-export const EXPORT_VERSION = 5;
+export const EXPORT_VERSION = 6;
 
 export type ExportedWork = {
   id: string;
@@ -41,16 +47,19 @@ export type ExportedWork = {
   /** Code ISO 639-1 — la langue du texte, pas celle d'une traduction. */
   originalLanguage: string | null;
   year: number | null;
+  /** Œuvres sérielles : nulle = publication en cours (lot 6). */
+  endYear: number | null;
   synopsis: string | null;
   durationMinutes: number | null;
   needsCompletion: boolean;
   genres: string[];
   creators: { name: string; role: string | null }[];
   seasons: { number: number; title: string | null; episodes: number }[];
-  tomes: { number: number; title: string | null; pageCount: number | null }[];
   /**
    * Éditions (D8) — désignées par leur libellé et leur ISBN, jamais par un
-   * identifiant interne, comme les sous-unités le sont par leur numéro.
+   * identifiant interne, comme les sous-unités le sont par leur numéro. Elles
+   * portent leurs **tomes** depuis le lot 6 : le nombre de volumes décrit un
+   * tirage, pas un texte.
    */
   editions: {
     label: string;
@@ -62,8 +71,7 @@ export type ExportedWork = {
     isbn: string | null;
     pageCount: number | null;
     isDefault: boolean;
-    coversTomeFrom: number | null;
-    coversTomeTo: number | null;
+    tomes: { number: number; title: string | null; pageCount: number | null }[];
   }[];
   coverUrl: string | null;
 };
@@ -91,7 +99,6 @@ export type ExportedDocument = {
   episodeWatches: unknown[];
   tomeProgress: unknown[];
   readingProgress: unknown[];
-  imports: unknown[];
   // Bibliothèque riche (lot 3)
   lists: unknown[];
   tags: unknown[];

@@ -171,14 +171,13 @@ export async function updateReadingProgress(
     if (!editionId) {
       return { error: "Précisez d'abord l'édition que vous lisez." };
     }
-    // L'édition doit être celle de cette œuvre — la sienne ou celle d'un de ses
-    // tomes, comme partout ailleurs (voir `setMyEdition`).
+    // L'édition doit être celle de cette œuvre, comme partout ailleurs
+    // (voir `setMyEdition`).
     const edition = await db.edition.findUnique({
       where: { id: editionId },
-      select: { workId: true, tome: { select: { workId: true } } },
+      select: { workId: true },
     });
-    const owner = edition?.workId ?? edition?.tome?.workId ?? null;
-    if (owner !== workId) return { error: "Édition introuvable." };
+    if (edition?.workId !== workId) return { error: "Édition introuvable." };
   }
 
   await db.$transaction(async (tx) => {

@@ -63,6 +63,7 @@ export default async function BibliothequePage({
             titleFr: true,
             titleOriginal: true,
             year: true,
+            endYear: true,
             coverImageId: true,
             needsCompletion: true,
             tags: {
@@ -101,6 +102,7 @@ export default async function BibliothequePage({
     type: r.work.type,
     titleFr: r.work.titleFr,
     year: r.work.year,
+    endYear: r.work.endYear,
     coverImageId: covers.get(r.work.id),
     state: r.state,
     rating: r.currentRating,

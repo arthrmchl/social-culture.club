@@ -27,6 +27,7 @@ export type PopularWork = {
     type: WorkType;
     titleFr: string;
     year: number | null;
+    endYear: number | null;
     coverImageId: string | null;
   };
   count: number;
@@ -105,6 +106,7 @@ export async function getDiscoverData(viewerId: string): Promise<DiscoverData> {
           type: true,
           titleFr: true,
           year: true,
+          endYear: true,
           coverImageId: true,
         },
       })

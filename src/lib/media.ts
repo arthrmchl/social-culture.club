@@ -106,9 +106,59 @@ export function worksOwnCover(type: WorkType): boolean {
 }
 
 /**
- * Année d'une fiche à l'affichage. Les fiches importées (lot 2, I1) peuvent
- * arriver sans année : on l'annonce plutôt que d'afficher un trou.
+ * Une œuvre qui se publie sur une période et non en une fois : séries, animés,
+ * BD, mangas. Ce sont exactement celles qui ont des sous-unités — inutile d'en
+ * tenir une seconde liste, qui divergerait.
  */
-export function formatYear(year: number | null | undefined): string {
-  return year == null ? "Année inconnue" : String(year);
+export function isSerial(type: WorkType): boolean {
+  return MEDIA[type].subUnit !== null;
+}
+
+/** Libellés des champs d'année, selon ce que le média appelle « paraître ». */
+export function yearLabels(type: WorkType): { start: string; end?: string } {
+  if (usesEpisodes(type)) {
+    return {
+      start: "Année de début de diffusion",
+      end: "Année de fin de diffusion",
+    };
+  }
+  if (usesTomes(type)) {
+    return {
+      start: "Année de début de publication",
+      end: "Année de fin de publication",
+    };
+  }
+  if (type === "BOOK") return { start: "Année de première publication" };
+  return { start: "Année" };
+}
+
+/**
+ * Comment nommer les personnes derrière l'œuvre. Un manga a des auteur·rice·s
+ * comme un livre ; une BD a un scénariste et un dessinateur, qu'un mot unique
+ * trahirait.
+ */
+export function creatorsLabel(type: WorkType): string {
+  return type === "BOOK" || type === "MANGA_SERIES"
+    ? "Auteur·rice(s)"
+    : "Créateurs";
+}
+
+export type WorkYears = {
+  type: WorkType;
+  year: number | null;
+  endYear: number | null;
+};
+
+/**
+ * Les années d'une fiche à l'affichage.
+ *
+ * Une œuvre sérielle annonce sa période : « 1989 – 2021 », ou « 1989 – en
+ * cours » tant que sa fin n'est pas renseignée — l'absence d'année de fin **est**
+ * la déclaration qu'elle se poursuit (lot 6). Les fiches importées (lot 2, I1)
+ * peuvent arriver sans année du tout : on l'annonce plutôt qu'afficher un trou.
+ */
+export function formatYears(work: WorkYears): string {
+  if (work.year == null) return "Année inconnue";
+  if (!isSerial(work.type)) return String(work.year);
+  return `${work.year} – ${work.endYear ?? "en cours"}`;
 }

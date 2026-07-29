@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { Card } from "@/components/ui/Card";
@@ -14,10 +13,10 @@ import { CSV_ENTITIES, ENTITY_LABELS } from "@/lib/export/shape";
 export default async function DonneesPage() {
   const user = await requireUser();
 
-  const [entries, works, batches, watchlist] = await Promise.all([
+  const [entries, works, lists, watchlist] = await Promise.all([
     db.journalEntry.count({ where: { userId: user.id } }),
     db.work.count({ where: { createdById: user.id } }),
-    db.importBatch.count({ where: { userId: user.id } }),
+    db.list.count({ where: { userId: user.id } }),
     db.userWork.count({
       where: { userId: user.id, watchlistedAt: { not: null } },
     }),
@@ -39,7 +38,7 @@ export default async function DonneesPage() {
           <Stat label="Entrées de journal" value={entries} />
           <Stat label="Fiches créées" value={works} />
           <Stat label="Liste d'envies" value={watchlist} />
-          <Stat label="Imports" value={batches} />
+          <Stat label="Listes" value={lists} />
         </dl>
       </Card>
 
@@ -83,30 +82,12 @@ export default async function DonneesPage() {
 
       <section>
         <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
-          Reprendre un historique
-        </h2>
-        <Card className="flex flex-col gap-3 text-sm">
-          <p>
-            Vous pouvez importer votre historique Letterboxd, Serializd ou de
-            lectures à tout moment. Un même export peut être rejoué sans créer
-            de doublon.
-          </p>
-          <div>
-            <Link href="/import">
-              <Button variant="secondary">Importer mon historique</Button>
-            </Link>
-          </div>
-        </Card>
-      </section>
-
-      <section>
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
           Supprimer mon compte
         </h2>
         <Card className="flex flex-col gap-3">
           <p className="text-sm text-muted">
             La suppression est définitive et immédiate : suivi, journal, notes,
-            critiques et imports disparaissent. Les fiches d&apos;œuvres que
+            critiques et listes disparaissent. Les fiches d&apos;œuvres que
             vous avez créées restent dans le catalogue — il est partagé, et les
             retirer effacerait le suivi des autres membres. Pensez à exporter
             vos données avant.

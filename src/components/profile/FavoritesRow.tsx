@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Field";
 import { CoverPlaceholder } from "@/components/CoverPlaceholder";
 import { MAX_FAVORITES } from "@/lib/favorites";
-import { MEDIA, formatYear } from "@/lib/media";
+import { MEDIA, formatYears } from "@/lib/media";
 import type { WorkType } from "@/generated/prisma/enums";
 
 export type FavoriteWork = {
@@ -17,6 +17,7 @@ export type FavoriteWork = {
   titleFr: string;
   type: WorkType;
   year: number | null;
+  endYear: number | null;
   coverImageId: string | null;
 };
 
@@ -137,7 +138,7 @@ export function FavoritesRow({ initial }: { initial: FavoriteWork[] }) {
                   >
                     <span className="min-w-0 truncate text-sm">
                       {MEDIA[r.type].emoji} {r.titleFr}{" "}
-                      <span className="text-muted">({formatYear(r.year)})</span>
+                      <span className="text-muted">({formatYears(r)})</span>
                     </span>
                     <Button
                       size="sm"
@@ -151,6 +152,7 @@ export function FavoritesRow({ initial }: { initial: FavoriteWork[] }) {
                             titleFr: r.titleFr,
                             type: r.type,
                             year: r.year,
+                            endYear: r.endYear,
                             coverImageId: r.coverImageId,
                           },
                         ]);

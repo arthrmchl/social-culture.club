@@ -36,6 +36,9 @@ const W = {
   berserk: "fixtwork0berserk",
 } as const;
 
+/** L'édition qui porte les tomes de Berserk (lot 6) — identifiant figé lui aussi. */
+const BERSERK_EDITION = "fixtberserk0ed1";
+
 /** Le code d'invitation consommé par `e2e/lot0.spec.ts`. */
 const E2E_INVITE_CODE = "SCC-E2E-0001";
 
@@ -124,7 +127,11 @@ async function main() {
     },
   });
 
-  // ─── Un manga, tomes ──────────────────────────────────────
+  // ─── Un manga, et l'édition qui porte ses tomes ───────────
+  // Depuis le lot 6, les tomes appartiennent au tirage : sans édition, la
+  // fiche n'aurait rien à cocher et `lot1` perdrait son suivi au tome.
+  // Publication toujours en cours : `endYear` reste nul, la fiche affiche
+  // « 1989 – en cours ».
   await db.work.create({
     data: {
       id: W.berserk,
@@ -138,13 +145,23 @@ async function main() {
       createdById: admin.id,
       createdAt: day("2024-01-07"),
       genres: { create: genreIds("Fantastique", "Seinen") },
-      tomes: {
-        create: buildTomes(12).map((t) => ({
-          id: `fixtberserk0t${String(t.number).padStart(2, "0")}`,
-          number: t.number,
-          title: t.title,
-          pageCount: 224,
-        })),
+      editions: {
+        create: {
+          id: BERSERK_EDITION,
+          publisher: "Glénat",
+          language: "fr",
+          format: "broché",
+          isDefault: true,
+          createdAt: day("2024-01-07"),
+          tomes: {
+            create: buildTomes(12).map((t) => ({
+              id: `fixtberserk0t${String(t.number).padStart(2, "0")}`,
+              number: t.number,
+              title: t.title,
+              pageCount: 224,
+            })),
+          },
+        },
       },
     },
   });
@@ -189,10 +206,13 @@ async function main() {
     },
   });
 
+  // L'édition lue est désignée : sans elle, pas de suivi au tome (lot 6) —
+  // la fiche demanderait de choisir avant de rendre ses trois tomes lus.
   await db.userWork.create({
     data: {
       userId: admin.id,
       workId: W.berserk,
+      editionId: BERSERK_EDITION,
       state: "IN_PROGRESS",
       currentRating: starsToScore(5),
       liked: true,

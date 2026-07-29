@@ -1,10 +1,12 @@
 /**
- * Parseur CSV (RFC 4180) — logique pure, sans dépendance (lot 2).
+ * Parseur CSV (RFC 4180) — logique pure, sans dépendance.
  *
  * Tolérant par construction : BOM, CRLF, guillemets, guillemets doublés,
  * virgules et sauts de ligne encapsulés, lignes plus courtes que l'en-tête,
- * dernière ligne sans retour final. Les exports tiers sont hétérogènes (R5) :
- * on ne plante jamais, on dégrade.
+ * dernière ligne sans retour final.
+ *
+ * Écrit pour l'import (lot 2), il lui survit : c'est lui qui relit ce
+ * qu'écrit `src/lib/export/csv.ts`, et donc lui qui atteste l'aller-retour.
  */
 
 export type CsvTable = { headers: string[]; rows: string[][] };

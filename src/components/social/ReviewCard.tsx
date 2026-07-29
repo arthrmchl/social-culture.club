@@ -3,7 +3,7 @@ import { ReviewContent } from "@/components/ReviewContent";
 import { StarDisplay } from "@/components/Stars";
 import { CoverPlaceholder } from "@/components/CoverPlaceholder";
 import { formatDate } from "@/lib/dates";
-import { formatYear } from "@/lib/media";
+import { formatYears } from "@/lib/media";
 import type { PublicReview } from "@/lib/social/read";
 
 /**
@@ -70,7 +70,7 @@ export function ReviewCard({
             </Link>
           )}
           <span className="text-xs text-muted">
-            {formatYear(review.work.year)}
+            {formatYears(review.work)}
           </span>
           {review.reviewedAt && (
             <span className="text-xs text-muted">

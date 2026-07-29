@@ -69,9 +69,6 @@ model User {
   tomeProgress    TomeProgress[]
   readingProgress ReadingProgress[]
 
-  // reprise de l'historique (lot 2)
-  importBatches ImportBatch[]
-
   // bibliothèque riche (lot 3)
   lists     List[]
   tags      Tag[]
@@ -186,6 +183,12 @@ model Work {
   /// traduction est déclarée par l'édition, pas par l'œuvre.
   originalLanguage String?
   year             Int? // année de première publication ; inconnue possible à l'import (lot 2)
+  /// Année de fin, pour les seules œuvres sérielles (`isSerial`, src/lib/media.ts) :
+  /// une série se publie sur une période, pas une année. **Nulle = en cours**
+  /// — c'est la lecture qu'en fait `formatYears`, et il n'y a pas de troisième
+  /// état : un manga arrêté sans qu'on sache quand se corrige, il ne se
+  /// déclare pas « fin inconnue ».
+  endYear          Int?
   synopsis         String?
   durationMinutes  Int? // films / épisodes
   metadata         Json     @default("{}") // ex. { "format": "TV" } pour les animés
@@ -208,16 +211,14 @@ model Work {
   genres   WorkGenre[]
   creators WorkCreator[]
   seasons  Season[]
-  tomes    Tome[]
+  // Pas de `tomes` : un tome appartient à une édition (lot 6), jamais à
+  // l'œuvre — Berserk fait 41 tomes chez Glénat et 14 en Deluxe.
   editions Edition[]
 
   // suivi personnel (lot 1)
   userWorks       UserWork[]
   journalEntries  JournalEntry[]
   readingProgress ReadingProgress[]
-
-  // reprise de l'historique (lot 2)
-  importTargets ImportTarget[] @relation("ImportTargetWork")
 
   // bibliothèque riche (lot 3)
   listItems ListItem[]
@@ -308,21 +309,23 @@ model Episode {
   @@unique([seasonId, number])
 }
 
+/// Un tome appartient à son **édition** (lot 6), pas à l'œuvre : le nombre de
+/// volumes décrit un tirage. Ce que le lot 5 a fait de l'ISBN et de la
+/// pagination, le lot 6 le fait du tome.
 model Tome {
-  id           String    @id @default(cuid())
-  workId       String
-  work         Work      @relation(fields: [workId], references: [id], onDelete: Cascade)
+  id           String @id @default(cuid())
+  editionId    String
+  edition      Edition @relation(fields: [editionId], references: [id], onDelete: Cascade)
   number       Int
   title        String?
   pageCount    Int?
   coverImageId String?
-  coverImage   Image?    @relation("TomeCover", fields: [coverImageId], references: [id], onDelete: SetNull)
-  editions     Edition[]
+  coverImage   Image?  @relation("TomeCover", fields: [coverImageId], references: [id], onDelete: SetNull)
 
   progress       TomeProgress[]
   journalEntries JournalEntry[]
 
-  @@unique([workId, number])
+  @@unique([editionId, number])
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -330,11 +333,11 @@ model Tome {
 // ─────────────────────────────────────────────────────────────
 
 model Edition {
+  /// Une édition appartient toujours à une œuvre, et à une seule (lot 6) :
+  /// elle ne s'attache plus à un tome, puisqu'elle les **contient**.
   id        String  @id @default(cuid())
-  workId    String?
-  work      Work?   @relation(fields: [workId], references: [id], onDelete: Cascade)
-  tomeId    String?
-  tome      Tome?   @relation(fields: [tomeId], references: [id], onDelete: Cascade)
+  workId    String
+  work      Work    @relation(fields: [workId], references: [id], onDelete: Cascade)
   /// Titre de cette édition — souvent le titre traduit, parfois un titre de
   /// collection. Vide quand il ne diffère pas de celui de l'œuvre.
   title     String?
@@ -348,22 +351,21 @@ model Edition {
   format    String? // poche, broché, numérique, intégrale…
   isDefault Boolean @default(false)
 
-  // Intégrale : étendue de tomes couverts (leur lecture les marque comme lus — lot 1/3)
-  coversTomeFrom Int?
-  coversTomeTo   Int?
-
   coverImageId String?
   coverImage   Image?  @relation("EditionCover", fields: [coverImageId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
 
+  /// Les volumes de ce tirage (BD, mangas). Une intégrale n'est plus qu'une
+  /// édition à peu de tomes : elle ne « couvre » plus une étendue, elle a les
+  /// siens.
+  tomes           Tome[]
   creators        EditionCreator[]
   journalEntries  JournalEntry[]
   readingProgress ReadingProgress[]
   userWorks       UserWork[]
 
   @@index([workId])
-  @@index([tomeId])
 }
 
 /// Qui a fait cette édition-ci et non l'œuvre : traducteur aujourd'hui,
@@ -539,9 +541,10 @@ model JournalEntry {
   watches EpisodeWatch[] // épisodes liés à une entrée synthétique
   tags    JournalEntryTag[] // étiquettes libres (lot 3, S10)
 
-  /// Clé d'import (lot 2, I6) — rend le ré-import idempotent ; null pour une
-  /// saisie manuelle. PostgreSQL traite les NULL comme distincts dans un index
-  /// unique, les saisies manuelles cohabitent donc sans conflit.
+  /// Clé d'import (lot 2, I6) — colonne **inerte** depuis le retrait de
+  /// l'import : plus personne ne l'écrit, mais elle marque les entrées venues
+  /// d'un service tiers, que le fil continue d'écarter (`feed-query.ts`). La
+  /// supprimer relâcherait d'un coup des milliers d'entrées dans le fil.
   importKey String?
 
   /// Masquée par la modération (lot 4, D25) — l'entrée reste à son auteur, qui
@@ -620,167 +623,6 @@ model ReadingProgress {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Imports (lot 2) — reprise de l'historique (I1, I2, I3, I6)
-//
-// Pipeline en quatre étapes persistées : téléversement → analyse →
-// rapprochement → application. Le découpage ImportTarget (l'œuvre à rapprocher)
-// / ImportRow (l'événement) est ce qui rend l'écran de rapprochement
-// supportable : 3 000 lignes de journal ≈ 900 œuvres distinctes.
-// ─────────────────────────────────────────────────────────────
-
-enum ImportSource {
-  LETTERBOXD
-  GOODREADS // couvre literal.club (format compatible)
-  SERIALIZD
-  SCC // ré-import d'un export social-culture.club (I4)
-}
-
-enum ImportBatchStatus {
-  UPLOADED // fichiers reçus, pas encore analysés
-  ANALYZED // lignes et cibles créées, rapprochement en attente
-  APPLYING // application en cours (reprenable)
-  APPLIED
-  FAILED
-  CANCELLED
-}
-
-/// Ce que devient une cible au rapprochement (I6).
-enum ImportResolution {
-  LINK // rattacher à une fiche existante
-  CREATE // créer une fiche
-  IGNORE
-}
-
-enum ImportDecidedBy {
-  AUTO
-  USER
-}
-
-/// Nature d'un événement importé.
-enum ImportRowKind {
-  LOG // consommation datée → JournalEntry
-  RATING // note seule → UserWork.currentRating
-  REVIEW
-  LIKE
-  WATCHLIST
-  STATE
-  PROGRESS
-  LIST_ITEM // conservé brut pour le lot 3, jamais appliqué au lot 2
-  UNSUPPORTED
-}
-
-enum ImportRowStatus {
-  PENDING
-  APPLIED
-  SKIPPED
-  FAILED
-}
-
-/// Un lot d'import — l'unité de reprise et de rejeu (I6).
-model ImportBatch {
-  id     String            @id @default(cuid())
-  userId String
-  user   User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  source ImportSource
-  status ImportBatchStatus @default(UPLOADED)
-
-  label    String? // « Letterboxd — 27/07/2026 »
-  options  Json    @default("{}") // ImportOptions
-  stats    Json    @default("{}") // compteurs figés après analyse et application
-  warnings Json    @default("[]") // ImportWarning[] — colonnes manquantes, lignes illisibles
-
-  // reprise après interruption
-  cursor   Int       @default(0) // cibles déjà appliquées
-  lockedAt DateTime? // verrou anti-double-application (expire à 5 min)
-  error    String?
-
-  createdAt  DateTime  @default(now())
-  analyzedAt DateTime?
-  appliedAt  DateTime?
-
-  files   ImportFile[]
-  targets ImportTarget[]
-  rows    ImportRow[]
-
-  @@index([userId, createdAt])
-}
-
-/// Payload brut conservé — dont les listes Letterboxd, rejouées au lot 3.
-model ImportFile {
-  id       String      @id @default(cuid())
-  batchId  String
-  batch    ImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  name     String // « diary.csv », « lists/mes-favoris.csv »
-  bytes    Int
-  checksum String // sha256 hex — détecte le ré-import du même fichier
-  content  String // texte brut
-  parsed   Boolean     @default(false) // false pour les listes au lot 2
-
-  @@index([batchId])
-}
-
-/// Une œuvre distincte à rapprocher (I6) — porte la décision, pas la ligne.
-model ImportTarget {
-  id      String      @id @default(cuid())
-  batchId String
-  batch   ImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
-
-  /// Clé de regroupement stable : externalId, sinon type|titreNormalisé|année.
-  workKey         String
-  externalId      String? // « letterboxd:… », « goodreads:… » — jamais recopié dans Work (D6)
-  type            WorkType
-  titleFr         String
-  titleOriginal   String?
-  titleNormalized String
-  year            Int?
-  creators        String[]
-  extra           Json     @default("{}") // n° de saison ou de tome détecté, format…
-
-  candidates Json              @default("[]") // candidats figés à l'analyse
-  resolution ImportResolution?
-  decidedBy  ImportDecidedBy?
-  confidence Float?
-
-  matchedWorkId String?
-  matchedWork   Work?   @relation("ImportTargetWork", fields: [matchedWorkId], references: [id], onDelete: SetNull)
-
-  appliedAt DateTime?
-  error     String?
-
-  rows ImportRow[]
-
-  @@unique([batchId, workKey])
-  @@index([batchId, resolution])
-  @@index([matchedWorkId])
-}
-
-/// Un événement importé — une ligne de CSV, ou plusieurs lignes fusionnées.
-model ImportRow {
-  id       String        @id @default(cuid())
-  batchId  String
-  batch    ImportBatch   @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  targetId String?
-  target   ImportTarget? @relation(fields: [targetId], references: [id], onDelete: Cascade)
-
-  kind   ImportRowKind
-  status ImportRowStatus @default(PENDING)
-
-  sourceFile String
-  sourceLine Int
-  raw        Json // ligne brute { colonne: valeur } — rejouable
-  payload    Json // ImportedEvent normalisé
-
-  /// Recopiée dans JournalEntry.importKey — le point d'idempotence.
-  importKey String
-
-  result Json?
-  error  String?
-
-  @@index([batchId, status])
-  @@index([targetId])
-}
-
-// ─────────────────────────────────────────────────────────────
 // Bibliothèque riche (lot 3) — ranger, annoter, se fixer un cap.
 //
 // Tout ce qui suit est **personnel** : le catalogue reste partagé (D29), mais
@@ -803,9 +645,10 @@ model List {
   coverImageId String?
   coverImage   Image?  @relation("ListCover", fields: [coverImageId], references: [id], onDelete: SetNull)
 
-  /// Clé de rejeu d'une liste importée (lot 2 → lot 3) ; null si saisie à la
-  /// main. Comme pour JournalEntry, PostgreSQL traite les NULL comme distincts
-  /// dans un index unique : les listes manuelles cohabitent sans conflit.
+  /// Clé de rejeu d'une liste importée (lot 2) ; null si saisie à la main.
+  /// Inerte comme `JournalEntry.importKey`, et conservée pour la même raison :
+  /// elle dit d'où vient la liste. PostgreSQL traite les NULL comme distincts
+  /// dans un index unique, les listes manuelles cohabitent donc sans conflit.
   importKey String?
 
   /// Retirée des surfaces sociales par **son auteur** (lot 4, P5). À ne pas

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { toCsvField, toCsvLine, toCsv, type CsvColumn } from "./csv";
-import { parseCsv, toRecords } from "@/lib/import/csv";
+import { parseCsv, toRecords } from "@/lib/csv";
 
 describe("toCsvField", () => {
   it("laisse une valeur simple telle quelle", () => {

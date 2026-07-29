@@ -30,6 +30,7 @@ export default async function AccueilPage() {
           titleFr: true,
           titleOriginal: true,
           year: true,
+          endYear: true,
           coverImageId: true,
           needsCompletion: true,
         },
@@ -47,6 +48,7 @@ export default async function AccueilPage() {
               titleFr: true,
               titleOriginal: true,
               year: true,
+              endYear: true,
               coverImageId: true,
               needsCompletion: true,
               editions: {

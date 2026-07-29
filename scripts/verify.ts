@@ -15,22 +15,13 @@ import {
   computeSeriesAutoState,
   computeTomesAutoState,
 } from "../src/lib/progress";
-import { letterboxdAdapter } from "../src/lib/import/adapters/letterboxd";
-import { loadFixture } from "../src/lib/import/fixtures";
-import { groupIntoTargets } from "../src/lib/import/merge";
-import { findImportCandidates } from "../src/lib/import/candidates";
-import { decideResolution } from "../src/lib/import/match";
-import { applyTarget } from "../src/lib/import/apply";
-import {
-  DEFAULT_IMPORT_OPTIONS,
-  type ImportedFile,
-} from "../src/lib/import/types";
-import { applyEditionCoverage } from "../src/lib/tracking";
+import { markEditionTomesRead } from "../src/lib/tracking";
 import { pageCountFor } from "../src/lib/editions";
 import { pickCoverImageId } from "../src/lib/covers";
 import { resolveCovers } from "../src/lib/cover-loader";
 import { searchWorks } from "../src/lib/search";
 import { MAX_FAVORITES } from "../src/lib/favorites";
+import { reorderPositions } from "../src/lib/lists";
 import { collectUserExport, entityToCsv } from "../src/lib/export/collect";
 import { CSV_ENTITIES } from "../src/lib/export/shape";
 import { accessFor, blockedUserIds } from "../src/lib/social/access";
@@ -85,6 +76,7 @@ async function main() {
     });
   }
 
+  // Publication en cours : `endYear` reste nul (lot 6).
   const manga = await db.work.create({
     data: {
       type: "MANGA_SERIES",
@@ -96,14 +88,26 @@ async function main() {
       createdById: admin.id,
     },
   });
-  await db.tome.createMany({
-    data: buildTomes(23).map((t) => ({ workId: manga.id, number: t.number })),
+  // Les tomes appartiennent à l'édition (lot 6) : c'est elle qui les porte, et
+  // c'est elle que le membre doit désigner pour les suivre.
+  const mangaEdition = await db.edition.create({
+    data: {
+      workId: manga.id,
+      publisher: "Glénat",
+      language: "fr",
+      isDefault: true,
+      tomes: {
+        create: buildTomes(23).map((t) => ({ number: t.number })),
+      },
+    },
   });
 
   const epCount = await db.episode.count({
     where: { season: { workId: anime.id } },
   });
-  const tomeCount = await db.tome.count({ where: { workId: manga.id } });
+  const tomeCount = await db.tome.count({
+    where: { editionId: mangaEdition.id },
+  });
 
   // Recherche floue — requête identique à searchWorks()
   const q = normalizeTitle("voyahe de chihiro");
@@ -165,9 +169,20 @@ async function main() {
   });
   const seriesState = computeSeriesAutoState(watched, epCount);
 
-  // Tous les tomes du manga lus → « terminé » (L4).
+  // Tous les tomes du manga lus → « terminé » (L4). Le suivi au tome exige
+  // une édition désignée (lot 6) : sans elle, `recomputeTomesState` ne compte
+  // rien, et la fiche n'afficherait pas de tomes à cocher.
+  await db.userWork.upsert({
+    where: { userId_workId: { userId: admin.id, workId: manga.id } },
+    update: { editionId: mangaEdition.id },
+    create: {
+      userId: admin.id,
+      workId: manga.id,
+      editionId: mangaEdition.id,
+    },
+  });
   const tomes = await db.tome.findMany({
-    where: { workId: manga.id },
+    where: { editionId: mangaEdition.id },
     select: { id: true },
   });
   await db.tomeProgress.createMany({
@@ -178,16 +193,17 @@ async function main() {
     })),
   });
   const readTomes = await db.tomeProgress.count({
-    where: { userId: admin.id, tome: { workId: manga.id }, state: "READ" },
+    where: {
+      userId: admin.id,
+      tome: { editionId: mangaEdition.id },
+      state: "READ",
+    },
   });
   const tomesState = computeTomesAutoState(readTomes, tomeCount);
 
   const uw = await db.userWork.findUnique({
     where: { userId_workId: { userId: admin.id, workId: film.id } },
   });
-
-  // ── Lot 2 : reprise de l'historique ──────────────────────────
-  const lot2 = await verifyImports(admin.id);
 
   // ── Lot 3 : bibliothèque riche ───────────────────────────────
   const lot3 = await verifyLibrary(admin.id, manga.id);
@@ -219,32 +235,10 @@ async function main() {
   );
 
   console.log(
-    `Import — 1re passe    : ${lot2.firstWorks} fiches créées, ${lot2.firstEntries} entrées` +
-      ` (attendu 4 et 5 — la 5e œuvre se rattache à la fiche existante)`,
+    `Édition lue d'un coup : ${lot3.covered} tomes marqués, ${lot3.readAfter} lus (attendu 5 et 5)`,
   );
   console.log(
-    `Import — fiches « à compléter » : ${lot2.needsCompletion} (attendu 4, sans visuel)`,
-  );
-  console.log(
-    `Import — ré-import    : ${lot2.secondWorks} fiches, ${lot2.secondEntries} entrées (attendu 0 et 0)`,
-  );
-  console.log(`Import — clés dupliquées : ${lot2.duplicateKeys} (attendu 0)`);
-  console.log(
-    `Listes — « Mes favoris » : ${lot2.listTitles.join(", ") || "AUCUNE"}` +
-      ` (attendu Dune, Arrival — classement=${lot2.listRanked})`,
-  );
-  console.log(
-    `Listes — rejeu        : ${lot2.listsAfterSecond} liste, ${lot2.itemsAfterSecond} éléments (attendu 1 et 2)`,
-  );
-  console.log(
-    `Étiquettes — journal  : ${lot2.tagsAfterFirst} puis ${lot2.tagsAfterSecond} après rejeu (attendu 2 et 2)`,
-  );
-
-  console.log(
-    `Intégrale T1–T5       : ${lot3.covered} tomes marqués, ${lot3.readAfter} lus (attendu 5 et 5)`,
-  );
-  console.log(
-    `Intégrale — rejeu     : ${lot3.readAfterSecond} lus (attendu 5 — idempotent)`,
+    `Édition lue — rejeu   : ${lot3.readAfterSecond} lus (attendu 5 — idempotent)`,
   );
   console.log(
     `Édition par défaut    : ${lot3.defaultCount} sur ${lot3.editionCount} éditions (attendu 1)`,
@@ -256,7 +250,10 @@ async function main() {
     `Favoris — plafond ${lot3.favoriteCap} respecté : ${lot3.favoriteCount} (attendu ${lot3.favoriteCap})`,
   );
   console.log(
-    `Export — version ${lot3.exportVersion}, ${lot3.exportEntities} entités CSV (attendu 5 et 17)`,
+    `Liste — ${lot3.listItems} éléments, positions contiguës après permutation : ${lot3.positionsOk} (attendu true)`,
+  );
+  console.log(
+    `Export — version ${lot3.exportVersion}, ${lot3.exportEntities} entités CSV (attendu 6 et 17)`,
   );
 
   console.log(
@@ -321,7 +318,6 @@ async function main() {
     uw?.liked === true &&
     seriesState === "CAUGHT_UP" &&
     tomesState === "COMPLETED" &&
-    lot2.ok &&
     lot3.ok &&
     lot4.ok &&
     lot5.ok;
@@ -658,7 +654,10 @@ async function verifySocial(adminId: string, workId: string) {
     data: { visibility: "PUBLIC" },
   });
   await db.journalEntry.deleteMany({
-    where: { userId: adminId, reviewText: "Exactement le même texte, à la virgule près." },
+    where: {
+      userId: adminId,
+      reviewText: "Exactement le même texte, à la virgule près.",
+    },
   });
   await db.journalEntry.deleteMany({
     where: { userId: adminId, importKey: "verify-imported" },
@@ -795,7 +794,13 @@ async function fetchFeedSourcesForVerify(
       },
       orderBy: { createdAt: "desc" },
       take: 51,
-      select: { id: true, userId: true, createdAt: true, reviewText: true, workId: true },
+      select: {
+        id: true,
+        userId: true,
+        createdAt: true,
+        reviewText: true,
+        workId: true,
+      },
     }),
     client.userWork.findMany({
       where: {
@@ -806,7 +811,13 @@ async function fetchFeedSourcesForVerify(
       },
       orderBy: { reviewedAt: "desc" },
       take: 51,
-      select: { id: true, userId: true, reviewedAt: true, reviewText: true, workId: true },
+      select: {
+        id: true,
+        userId: true,
+        reviewedAt: true,
+        reviewText: true,
+        workId: true,
+      },
     }),
   ]);
 
@@ -834,41 +845,48 @@ async function fetchFeedSourcesForVerify(
  * Lot 3 — bibliothèque riche, contre la vraie base.
  *
  * Ce que les tests unitaires ne peuvent pas dire : que les contraintes
- * d'unicité tiennent réellement, que la couverture d'une intégrale est
- * idempotente, et que l'export nomme bien toutes ses entités.
+ * d'unicité tiennent réellement, que « j'ai lu cette édition » est idempotent,
+ * et que l'export nomme bien toutes ses entités.
  */
 async function verifyLibrary(userId: string, mangaId: string) {
   await db.tomeProgress.deleteMany({
-    where: { userId, tome: { workId: mangaId } },
+    where: { userId, tome: { edition: { workId: mangaId } } },
   });
+  // Table rase des éditions du manga : celle du bloc précédent a déjà tout dit,
+  // et les deux comptages ci-dessous partent de zéro.
   await db.edition.deleteMany({ where: { workId: mangaId } });
   await db.goal.deleteMany({ where: { userId } });
   await db.favorite.deleteMany({ where: { userId } });
 
-  // 1. Intégrale : lire T1–T5 marque cinq tomes, et le rejeu n'en ajoute pas.
+  // 1. Une intégrale n'est plus qu'une édition à peu de volumes (lot 6) :
+  //    « j'ai lu cette édition » marque ses cinq tomes, le rejeu n'ajoute rien.
   const omnibus = await db.edition.create({
     data: {
       workId: mangaId,
       format: "intégrale",
       publisher: "Glénat",
-      coversTomeFrom: 1,
-      coversTomeTo: 5,
       isDefault: true,
+      tomes: { create: buildTomes(5).map((t) => ({ number: t.number })) },
     },
+  });
+  // Le décompte suit l'édition désignée : c'est celle-ci qu'on lit ici.
+  await db.userWork.update({
+    where: { userId_workId: { userId, workId: mangaId } },
+    data: { editionId: omnibus.id },
   });
 
   const covered = await db.$transaction((tx) =>
-    applyEditionCoverage(tx, userId, mangaId, omnibus.id),
+    markEditionTomesRead(tx, userId, mangaId, omnibus.id),
   );
   const readAfter = await db.tomeProgress.count({
-    where: { userId, tome: { workId: mangaId }, state: "READ" },
+    where: { userId, tome: { editionId: omnibus.id }, state: "READ" },
   });
 
   await db.$transaction((tx) =>
-    applyEditionCoverage(tx, userId, mangaId, omnibus.id),
+    markEditionTomesRead(tx, userId, mangaId, omnibus.id),
   );
   const readAfterSecond = await db.tomeProgress.count({
-    where: { userId, tome: { workId: mangaId }, state: "READ" },
+    where: { userId, tome: { editionId: omnibus.id }, state: "READ" },
   });
 
   // 2. Une seule édition par défaut, invariante tenue par l'action.
@@ -905,6 +923,21 @@ async function verifyLibrary(userId: string, mangaId: string) {
   }
 
   // 4. Favoris : le plafond est tenu par l'action, la base garantit l'unicité.
+  //    Il faut assez d'œuvres pour l'atteindre — depuis le retrait de l'import,
+  //    la base de vérification n'en compte plus que trois, d'où ce complément.
+  const owner = await db.work.findFirst({ select: { createdById: true } });
+  for (let i = await db.work.count(); i < MAX_FAVORITES; i++) {
+    const titre = `Fiche de complément ${i}`;
+    await db.work.create({
+      data: {
+        type: "FILM",
+        titleFr: titre,
+        titleNormalized: normalizeTitle(titre),
+        year: 2000 + i,
+        createdById: owner!.createdById,
+      },
+    });
+  }
   const works = await db.work.findMany({
     take: MAX_FAVORITES,
     select: { id: true },
@@ -914,7 +947,47 @@ async function verifyLibrary(userId: string, mangaId: string) {
   });
   const favoriteCount = await db.favorite.count({ where: { userId } });
 
-  // 5. Export : le document annonce sa version et couvre toutes ses entités.
+  // 5. Listes : positions contiguës à partir de 0, et permutation sans trou.
+  //    Le lot 2 en fournissait par le rejeu des listes Letterboxd ; depuis son
+  //    retrait, c'est ici qu'elles se vérifient — c'est de toute façon leur lot.
+  await db.list.deleteMany({ where: { userId } });
+  const list = await db.list.create({
+    data: {
+      userId,
+      title: "Liste de vérification",
+      slug: "liste-de-verification",
+      isRanked: true,
+      items: {
+        create: works.map((w, i) => ({ workId: w.id, position: i })),
+      },
+    },
+    include: { items: { orderBy: { position: "asc" } } },
+  });
+
+  // Le premier passe en dernier : seules les lignes déplacées sont réécrites.
+  const moves = reorderPositions(
+    list.items,
+    list.items[0].id,
+    works.length - 1,
+  );
+  await db.$transaction(
+    moves.map((m) =>
+      db.listItem.update({
+        where: { id: m.id },
+        data: { position: m.position },
+      }),
+    ),
+  );
+  const reordered = await db.listItem.findMany({
+    where: { listId: list.id },
+    orderBy: { position: "asc" },
+    select: { id: true, position: true },
+  });
+  const positionsOk =
+    reordered.every((it, i) => it.position === i) &&
+    reordered.at(-1)?.id === list.items[0].id;
+
+  // 6. Export : le document annonce sa version et couvre toutes ses entités.
   const doc = await collectUserExport(userId);
   const csvOk = CSV_ENTITIES.every(
     (entity) => entityToCsv(doc, entity).length > 0,
@@ -928,6 +1001,8 @@ async function verifyLibrary(userId: string, mangaId: string) {
     covered,
     readAfter,
     readAfterSecond,
+    listItems: reordered.length,
+    positionsOk,
     defaultCount,
     editionCount,
     goalDuplicateBlocked,
@@ -943,204 +1018,11 @@ async function verifyLibrary(userId: string, mangaId: string) {
       editionCount === 2 &&
       goalDuplicateBlocked &&
       favoriteCount === MAX_FAVORITES &&
-      doc.version === 5 &&
+      positionsOk &&
+      doc.version === 6 &&
       doc.lists.length > 0 &&
       csvOk,
   };
-}
-
-/**
- * Lot 2 — reprise de l'historique, contre la vraie base.
- *
- * Rejoue le pipeline complet (analyse, rapprochement pg_trgm, application)
- * puis **recommence à l'identique** : c'est le second passage qui prouve
- * l'idempotence promise par I6, et rien d'autre ne peut la démontrer.
- */
-async function verifyImports(userId: string) {
-  // Les listes ne sont plus mises de côté : depuis le lot 3 elles font partie
-  // de l'import, et leur idempotence doit être prouvée au même titre.
-  const files = loadFixture("letterboxd").filter(
-    (f) => f.name !== "profile.csv",
-  );
-
-  const titres = ["Dune", "Arrival", "Mickey 17", "Blade Runner 2049"];
-  await db.importBatch.deleteMany({ where: { userId } });
-  await db.journalEntry.deleteMany({
-    where: { userId, importKey: { not: null } },
-  });
-  await db.list.deleteMany({ where: { userId, importKey: { not: null } } });
-  await db.tag.deleteMany({ where: { userId } });
-  await db.work.deleteMany({ where: { titleFr: { in: titres } } });
-
-  const before = {
-    works: await db.work.count(),
-    entries: await db.journalEntry.count({ where: { userId } }),
-  };
-
-  const first = await runImport(userId, files);
-  const afterFirst = {
-    works: await db.work.count(),
-    entries: await db.journalEntry.count({ where: { userId } }),
-  };
-
-  const needsCompletion = await db.work.count({
-    where: {
-      needsCompletion: true,
-      coverImageId: null,
-      titleFr: { in: titres },
-    },
-  });
-
-  // Listes et étiquettes reprises de l'export (lot 3, S9 et S10).
-  const listAfterFirst = await db.list.findFirst({
-    where: { userId, importKey: "letterboxd:list:mes-favoris" },
-    include: {
-      items: { orderBy: { position: "asc" }, include: { work: true } },
-    },
-  });
-  const tagsAfterFirst = await db.journalEntryTag.count({
-    where: { tag: { userId } },
-  });
-
-  // Deuxième passage, fichiers identiques : rien ne doit être créé.
-  const second = await runImport(userId, files);
-  const afterSecond = {
-    works: await db.work.count(),
-    entries: await db.journalEntry.count({ where: { userId } }),
-  };
-
-  const listsAfterSecond = await db.list.count({
-    where: { userId, importKey: { not: null } },
-  });
-  const itemsAfterSecond = await db.listItem.count({
-    where: { list: { userId, importKey: { not: null } } },
-  });
-  const tagsAfterSecond = await db.journalEntryTag.count({
-    where: { tag: { userId } },
-  });
-
-  const duplicates = await db.$queryRaw<{ n: bigint }[]>`
-    SELECT count(*) AS n FROM (
-      SELECT "importKey" FROM "JournalEntry"
-      WHERE "importKey" IS NOT NULL AND "userId" = ${userId}
-      GROUP BY "userId", "importKey" HAVING count(*) > 1
-    ) d`;
-  const duplicateKeys = Number(duplicates[0]?.n ?? 0);
-
-  const firstWorks = afterFirst.works - before.works;
-  const firstEntries = afterFirst.entries - before.entries;
-  const secondWorks = afterSecond.works - afterFirst.works;
-  const secondEntries = afterSecond.entries - afterFirst.entries;
-
-  const listTitles = listAfterFirst?.items.map((i) => i.work.titleFr) ?? [];
-
-  return {
-    firstWorks,
-    firstEntries,
-    secondWorks,
-    secondEntries,
-    needsCompletion,
-    duplicateKeys,
-    listTitles,
-    listRanked: listAfterFirst?.isRanked ?? false,
-    listsAfterSecond,
-    itemsAfterSecond,
-    tagsAfterFirst,
-    tagsAfterSecond,
-    ok:
-      first.targets === 5 &&
-      second.targets === 5 &&
-      // Listes (S9) : « Mes favoris » reprend Dune et Arrival, dans l'ordre du
-      // classement, et le rejeu n'en duplique aucun.
-      listAfterFirst !== null &&
-      listAfterFirst.isRanked === true &&
-      listTitles.join(",") === "Dune,Arrival" &&
-      listsAfterSecond === 1 &&
-      itemsAfterSecond === 2 &&
-      // Étiquettes (S10) : les tags du diary rejoignent les entrées, et le
-      // rejeu les rattache aux mêmes entrées plutôt que d'en créer d'autres.
-      tagsAfterFirst === 2 &&
-      tagsAfterSecond === 2 &&
-      // 5 œuvres importées, mais « Le Voyage de Chihiro » existe déjà dans le
-      // catalogue (créé plus haut) : le rapprochement trigramme doit s'y
-      // rattacher au lieu de créer un doublon — donc 4 fiches nouvelles.
-      firstWorks === 4 &&
-      firstEntries === 5 &&
-      secondWorks === 0 &&
-      secondEntries === 0 &&
-      needsCompletion === 4 &&
-      duplicateKeys === 0,
-  };
-}
-
-/** Analyse puis applique un lot, sans passer par l'interface. */
-async function runImport(userId: string, files: ImportedFile[]) {
-  const result = letterboxdAdapter.parse(files, DEFAULT_IMPORT_OPTIONS);
-  const targets = groupIntoTargets("LETTERBOXD", result.events);
-
-  const candidatesByKey = await findImportCandidates(
-    targets.map((t) => ({
-      key: t.workKey,
-      titleNormalized: t.titleNormalized,
-      year: t.ref.year,
-      type: t.ref.type,
-    })),
-  );
-
-  const batch = await db.importBatch.create({
-    data: { userId, source: "LETTERBOXD", status: "ANALYZED" },
-  });
-
-  for (const target of targets) {
-    const decision = decideResolution(
-      target.ref,
-      candidatesByKey.get(target.workKey) ?? [],
-    );
-    const created = await db.importTarget.create({
-      data: {
-        batchId: batch.id,
-        workKey: target.workKey,
-        externalId: target.ref.externalId,
-        type: target.ref.type,
-        titleFr: target.ref.titleFr,
-        titleNormalized: target.titleNormalized,
-        year: target.ref.year,
-        creators: target.ref.creators,
-        extra: { seasons: target.seasons, volumes: target.volumes },
-        // Le rapprochement automatique doit suffire : on ne décide rien à la main.
-        resolution: decision.resolution,
-        decidedBy: decision.auto ? "AUTO" : "USER",
-        confidence: decision.confidence,
-        matchedWorkId: decision.workId,
-      },
-    });
-    await db.importRow.createMany({
-      data: target.events.map(({ event, importKey }) => ({
-        batchId: batch.id,
-        targetId: created.id,
-        kind: event.kind,
-        sourceFile: event.sourceFile,
-        sourceLine: event.sourceLine,
-        raw: {},
-        payload: JSON.parse(JSON.stringify(event)),
-        importKey,
-      })),
-    });
-  }
-
-  const stored = await db.importTarget.findMany({
-    where: { batchId: batch.id },
-    include: { rows: true },
-  });
-
-  for (const target of stored) {
-    await db.$transaction(
-      (tx) => applyTarget(tx, userId, "LETTERBOXD", target),
-      { timeout: 30_000, maxWait: 5_000 },
-    );
-  }
-
-  return { targets: stored.length };
 }
 
 main().catch(async (e) => {

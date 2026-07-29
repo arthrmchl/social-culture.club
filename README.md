@@ -13,11 +13,11 @@ Ce dépôt contient les lots suivants :
   progression fine (épisodes, tomes, pages), watchlist et accueil « en cours ».
   À ce stade, l'application remplace les trois services de référence en usage
   solo — **jalon scénario A**.
-- **Lot 2 — Reprise de l'historique** : imports Letterboxd, Serializd et
-  lectures (Goodreads / literal.club) créateurs d'œuvres, écran de
-  rapprochement avec le catalogue, imports rejouables sans doublon, file des
-  fiches à compléter, export complet (JSON + CSV par entité), suppression de
-  compte effective et scripts de sauvegarde/restauration.
+- **Lot 2 — Reprise de l'historique** : chantier d'import (Letterboxd,
+  Serializd, Goodreads / literal.club) **retiré au lot 6**, une fois
+  l'historique repris. En restent l'export complet (JSON + CSV par entité), la
+  file des fiches à compléter, la suppression de compte effective et les
+  scripts de sauvegarde/restauration.
 
 ## Stack
 
@@ -123,12 +123,11 @@ src/
   lib/                   db, auth, session, storage, search, text, generators, media,
                          rating, status, progress, tracking, markdown, dates,
                          placeholder
-  lib/import/            csv, headers, values, types, infer, merge, match, dedup,
-                         limits, candidates, apply + adapters/ (lot 2)
-  lib/export/            csv, shape, collect (lot 2)
+  lib/csv.ts             Parseur CSV (RFC 4180), relit ce qu'écrit l'export
+  lib/export/            csv, shape, collect
   actions/               auth, invitation, work, profile, upload,
                          status, journal, progress, season (suivi lot 1),
-                         import, import-search, completion, account (lot 2)
+                         edition (lots 3, 5 et 6), completion, account
   components/            UI réutilisable + WorkForm, WorkCard, NavBar, CoverUpload,
                          RatingStars/StarInput/Stars, LikeButton, StatusSelect,
                          ReviewEditor/ReviewContent, JournalEntryForm/Card,
@@ -136,11 +135,10 @@ src/
   app/(auth)/            Connexion, inscription, mot de passe oublié, réinitialisation
   app/(app)/             Accueil, recherche, création, catalogue, fiche, profil,
                          journal, watchlist, invitations,
-                         import, a-completer, donnees (lot 2)
+                         a-completer, donnees
   app/api/auth/          Handler better-auth
   app/api/uploads/[id]/  Service des visuels téléversés
-  app/api/import/upload/ Téléversement des fichiers d'import (lot 2)
-  app/api/export/        Export JSON et CSV par entité (lot 2)
+  app/api/export/        Export JSON et CSV par entité
 scripts/                 verify (vérification données), backup, restore,
                          test-env / test-db / with-test-db (base de test jetable)
   proxy.ts               Protection optimiste des routes (ex-middleware)
@@ -169,16 +167,11 @@ Lot 1 :
   sans écraser un statut manuel (en pause, abandonné).
 - **L2** progression de lecture historisée (table `ReadingProgress`).
 
-Lot 2 :
+Lot 2 (l'import lui-même a été retiré au lot 6) :
 
-- **I1/I2/I3** imports Letterboxd, Serializd et lectures, créateurs d'œuvres.
-- **I6** écran de rapprochement avec le catalogue existant, et imports
-  **rejouables sans duplication** : chaque entrée de journal importée porte une
-  clé stable (`JournalEntry.importKey`, unique par utilisateur).
 - **D31** l'obligation de visuel ne vaut que pour la création manuelle : les
-  fiches importées reçoivent un visuel de substitution et un badge « à
-  compléter », rassemblées dans `/a-completer`. Depuis le lot 5, l'import crée
-  l'œuvre seule : ni édition, ni ISBN, ni pagination.
+  fiches importées ont reçu un visuel de substitution et un badge « à
+  compléter », rassemblées dans `/a-completer`.
 - **I4** export complet (JSON + un CSV par entité), lisible sans l'application.
 - **I5** scripts de sauvegarde et de restauration (base + visuels).
 - **N9** suppression de compte effective, les fiches créées restant au
@@ -195,9 +188,9 @@ Lot 3 :
   « j'aime » (S6), qui reste une réaction à l'œuvre.
 - **L5/D12** objectifs annuels par portée, dont « Lectures » activée par défaut
   (`/objectifs`). Est compté ce qui est consigné au journal dans l'année.
-- **L6/D8** éditions et intégrales : édition par défaut, édition lue (qui
-  pilote la pagination affichée), et « J'ai lu cette intégrale » qui marque les
-  tomes couverts comme lus.
+- **L6/D8** éditions : édition par défaut, édition lue (qui pilote la
+  pagination et les tomes affichés), et « J'ai lu cette édition » qui marque
+  tous ses tomes comme lus en une seule entrée de journal.
 - **S12** bibliothèque filtrable (`/bibliotheque`) — **mes** œuvres, par média,
   statut, note, genre et étiquette ; à distinguer de `/catalogue`, qui montre
   les fiches de toute l'instance.
@@ -215,7 +208,18 @@ Lot 5a — l'œuvre et son édition :
   illustre son étagère).
 - **D31** ne s'applique plus aux médias de lecture : un livre se crée sans
   visuel, et ses éditions viennent ensuite.
-- L'**export** passe en **version 4** ; l'**import** crée l'œuvre seule.
+
+Lot 6 — le manga tel qu'il se publie :
+
+- Une œuvre **sérielle** (série, animé, BD, manga) porte une **année de début**
+  et une **année de fin facultative** : la laisser vide déclare une publication
+  **en cours** (« 1989 – en cours »).
+- Un manga a des **auteur·rice·s**, pas des « créateurs ».
+- Le **nombre de tomes appartient à l'édition** : Berserk fait 41 tomes chez
+  Glénat et 14 en Deluxe. Il se saisit sur le tirage, et le suivi au tome exige
+  d'avoir désigné l'édition qu'on lit — comme le suivi à la page depuis le
+  lot 5. Réduire un tirage refuse d'effacer un tome déjà suivi.
+- L'**import est retiré** ; l'**export** passe en **version 6**.
 
 ## Vérification manuelle (bout en bout)
 
@@ -228,7 +232,8 @@ Une fois la base démarrée et peuplée :
    **upload**. Vérifier le refus si titre / année manquant, et le refus du
    visuel manquant sur un film ou une série. Un **livre**, une **BD** ou un
    **manga** se crée sans visuel : c'est son édition qui l'illustrera.
-4. Générateurs : « 1 saison de 12 épisodes », « série de 23 tomes ».
+4. Générateur d'épisodes : « 1 saison de 12 épisodes ». Un manga ne demande
+   **pas** de nombre de tomes : il se déclare sur son édition (lot 6).
 5. Recréer un titre + année proche → la **détection de doublon** propose la fiche
    existante.
 6. **Recherche** avec une faute de frappe → l'œuvre remonte (pg_trgm) ; terme
@@ -246,8 +251,10 @@ Suivi (lot 1), sur une fiche :
 10. **Série/animé** : cocher un épisode, cocher une saison entière, « vu jusqu'à
     SxxEyy » ; le statut passe à **« à jour »** quand tous les épisodes sont vus ;
     noter/critiquer une **saison**.
-11. **BD/manga** : cliquer les tomes (à lire → en cours → lu) ; l'agrégat
-    « X/Y tomes lus » et le statut se mettent à jour.
+11. **BD/manga** : ajouter une **édition** avec son **nombre de tomes**, la
+    désigner (« Je lis celle-ci »), puis cliquer les tomes (à lire → en cours →
+    lu) ; l'agrégat « X/Y tomes lus » et le statut se mettent à jour. Sans
+    édition désignée, la fiche demande d'abord laquelle on lit.
 12. **Livre** : ajouter une **édition** (éditeur, titre, langue, traducteur,
     ISBN, pages, couverture) — elle devient l'édition par défaut et sa
     couverture apparaît au catalogue. Tant qu'aucune édition n'est **désignée**,
@@ -258,27 +265,21 @@ Suivi (lot 1), sur une fiche :
     vignette suivent. Chercher l'**ISBN** d'une édition retrouve l'œuvre.
 13. Marquer une œuvre **« à voir »** → elle apparaît dans **`/watchlist`**.
 
-Reprise de l'historique (lot 2) :
+Éditions et années (lots 5 et 6) :
 
-14. **`/import`** → choisir la source, déposer les CSV (dézippés), **analyser**.
-    Le récapitulatif annonce les œuvres et les événements trouvés, et signale
-    en français toute colonne manquante.
-15. **Rapprochement** : l'onglet « À décider » ne contient que l'ambigu — le
-    reste a été tranché automatiquement. Rattacher, créer ou ignorer, une
-    décision par œuvre.
-16. **Appliquer** : le journal, la liste d'envies, les notes et les critiques
-    sont repris ; le rapport récapitule.
-17. **Réimporter le même export** → le rapport annonce **0 fiche et 0 entrée
-    créées** : les imports sont rejouables sans doublon.
-18. **`/a-completer`** liste les fiches importées sans visuel ; les compléter
-    retire le badge.
-19. **`/donnees`** : export JSON, export CSV par entité, suppression de compte.
+14. **`/oeuvre/<id>/modifier`** : renseigner l'**année de fin** d'une série puis
+    la vider → l'en-tête repasse à « en cours ».
+15. Sur un manga, ajouter une seconde édition d'un autre nombre de tomes et la
+    désigner : le décompte repart sur ce tirage.
+16. Réduire une édition à moins de tomes qu'il n'en est suivi → refus motivé.
+17. **`/donnees`** : export JSON (version 6), export CSV par entité, suppression
+    de compte.
 
-Vérification de la couche données (lots 0 à 2) sans le navigateur :
+Vérification de la couche données sans le navigateur :
 
 ```bash
-npm run verify              # œuvres, auto-statuts, recherche floue, import + ré-import idempotent
-npm test                    # tests unitaires (rating, status, progress, import, export…)
+npm run verify              # œuvres, auto-statuts, recherche floue, éditions, social
+npm test                    # tests unitaires (rating, status, progress, média, export…)
 npm run test:e2e            # parcours bout en bout Playwright
 ```
 
@@ -325,18 +326,9 @@ et propositions de correction (D30).
 Deux points valent d'être connus à l'usage. Les profils sont **ouverts hors
 connexion** — c'est le seul endroit de l'application qui le soit ; tout le reste
 reste derrière la connexion. Et le fil ignore les entrées **importées** : sans
-cela, reprendre un historique Letterboxd noierait le fil de tous vos abonnés.
+cela, l'historique Letterboxd repris au lot 2 noierait le fil de tous vos
+abonnés — la fonctionnalité d'import a disparu, ses entrées sont toujours là.
 
 ## Hors périmètre (lot suivant)
 
-Statistiques, rétrospective annuelle et PWA (lot 5).
-
-Les listes présentes dans un export Letterboxd sont désormais **importées**
-(S9), de même que les étiquettes du journal (S10). Un lot importé avant le
-lot 3, dont les listes avaient été mises de côté, se reprend depuis sa page :
-« Reprendre les listes » crée un lot neuf à partir des fichiers conservés,
-sans qu'il faille réimporter quoi que ce soit.
-
-Formats d'export à confirmer contre de vrais fichiers (D14) : Serializd et
-literal.club. Le cas échéant, seule la table `COLUMNS` de l'adaptateur concerné
-est à corriger — `src/lib/import/adapters/`.
+Statistiques, rétrospective annuelle et PWA.

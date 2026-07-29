@@ -39,6 +39,7 @@ const WORK_SELECT = {
   type: true,
   titleFr: true,
   year: true,
+  endYear: true,
   coverImageId: true,
 } as const;
 
@@ -47,6 +48,7 @@ export type PublicWork = {
   type: WorkType;
   titleFr: string;
   year: number | null;
+  endYear: number | null;
   coverImageId: string | null;
 };
 

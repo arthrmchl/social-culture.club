@@ -56,7 +56,7 @@ describe("updateReadingProgress", () => {
 
   it("refuse une édition qui n'est pas celle de l'œuvre", async () => {
     workFindUnique.mockResolvedValue({ type: "BOOK" });
-    editionFindUnique.mockResolvedValue({ workId: "autre", tome: null });
+    editionFindUnique.mockResolvedValue({ workId: "autre" });
 
     const res = await updateReadingProgress("w1", {
       page: 150,
@@ -69,7 +69,7 @@ describe("updateReadingProgress", () => {
 
   it("historise la progression avec son édition", async () => {
     workFindUnique.mockResolvedValue({ type: "BOOK" });
-    editionFindUnique.mockResolvedValue({ workId: "w1", tome: null });
+    editionFindUnique.mockResolvedValue({ workId: "w1" });
 
     const res = await updateReadingProgress("w1", {
       page: 150,
@@ -86,21 +86,6 @@ describe("updateReadingProgress", () => {
         percent: null,
       },
     });
-  });
-
-  it("accepte l'édition rattachée à un tome de l'œuvre", async () => {
-    workFindUnique.mockResolvedValue({ type: "BOOK" });
-    editionFindUnique.mockResolvedValue({
-      workId: null,
-      tome: { workId: "w1" },
-    });
-
-    const res = await updateReadingProgress("w1", {
-      page: 10,
-      editionId: "e-tome",
-    });
-
-    expect(res).toEqual({ ok: true });
   });
 
   it("n'exige rien d'un média qui ne se suit pas à la page", async () => {

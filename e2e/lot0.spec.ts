@@ -5,7 +5,12 @@ const COVER = path.resolve(__dirname, "fixtures/cover.png");
 
 // Suffixe unique pour rejouer le scénario sans collision.
 const S = Date.now().toString(36);
-const USER = { name: `E2E ${S}`, username: `e2e_${S}`, email: `e2e_${S}@test.dev`, password: "motdepasse123" };
+const USER = {
+  name: `E2E ${S}`,
+  username: `e2e_${S}`,
+  email: `e2e_${S}@test.dev`,
+  password: "motdepasse123",
+};
 const FILM_TITLE = `Inception E2E ${S}`;
 const MANGA_TITLE = `Berserk E2E ${S}`;
 
@@ -32,10 +37,14 @@ test("inscription sur invitation puis accueil", async () => {
   await page.getByRole("button", { name: "S'inscrire" }).click();
 
   await expect(page).toHaveURL("/");
-  await expect(page.getByRole("heading", { name: new RegExp(USER.name) })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: new RegExp(USER.name) }),
+  ).toBeVisible();
 });
 
-test("inscription refusée sans code d'invitation valide", async ({ browser }) => {
+test("inscription refusée sans code d'invitation valide", async ({
+  browser,
+}) => {
   const fresh = await browser.newContext(); // session neuve, non connectée
   const p = await fresh.newPage();
   await p.goto("/inscription");
@@ -60,7 +69,9 @@ test("création d'un film avec visuel (D31) et affichage de la fiche", async () 
 
   await expect(page).toHaveURL(/\/oeuvre\/.+/);
   await expect(page.getByRole("heading", { name: FILM_TITLE })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Modifier la fiche" })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Modifier la fiche" }),
+  ).toBeVisible();
 });
 
 test("détection de doublons à la volée", async () => {
@@ -68,33 +79,57 @@ test("détection de doublons à la volée", async () => {
   await page.fill("#titleFr", FILM_TITLE);
   await page.fill("#year", "2010");
   await expect(page.getByText(/fiches proches existent déjà/i)).toBeVisible();
-  await expect(page.getByRole("link", { name: new RegExp(FILM_TITLE) })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: new RegExp(FILM_TITLE) }),
+  ).toBeVisible();
 });
 
-test("générateur de tomes pour un manga", async () => {
+test("générateur de tomes, sur l'édition d'un manga", async () => {
   await page.goto("/creer");
   await page.getByRole("button", { name: /Manga/ }).click();
   await page.fill("#titleFr", MANGA_TITLE);
   await page.fill("#year", "1989");
+  // Une série se publie sur une période : l'année de fin est proposée, et
+  // rester vide déclare une publication en cours (lot 6).
+  await expect(page.locator("#endYear")).toBeVisible();
   // Pas de visuel à téléverser : celui d'un manga appartient à ses éditions
   // (lot 5), et le champ n'est donc pas rendu pour une lecture.
   await expect(page.locator('input[type="file"]')).toHaveCount(0);
-  await page.fill("#tomesCount", "5");
+  // Ni de nombre de tomes : il décrit un tirage, pas un texte (lot 6).
+  await expect(page.locator("#tomesCount")).toHaveCount(0);
   await page.getByRole("button", { name: "Créer la fiche" }).click();
 
   await expect(page).toHaveURL(/\/oeuvre\/.+/);
-  // Le suivi au tome (lot 1) affiche un bouton par tome généré.
-  await expect(page.getByRole("button", { name: "T5", exact: true })).toBeVisible();
+  await expect(page.getByText("1989 – en cours")).toBeVisible();
+
+  // Les tomes se déclarent sur l'édition qui les publie.
+  await page.getByRole("button", { name: "Ajouter une édition" }).click();
+  await page.fill("#ed-publisher", "Glénat");
+  await page.fill("#ed-tomes", "5");
+  await page.getByRole("button", { name: "Ajouter", exact: true }).click();
+  await expect(page.getByText(/5 tomes/).first()).toBeVisible({
+    timeout: 10000,
+  });
+
+  // Le suivi au tome n'ouvre qu'une fois l'édition désignée (lot 6).
+  await page.getByRole("button", { name: "Je lis celle-ci" }).first().click();
+  await expect(
+    page.getByRole("button", { name: "T5", exact: true }),
+  ).toBeVisible({ timeout: 10000 });
 });
 
 test("recherche floue tolérante aux fautes", async () => {
   await page.goto("/recherche");
   await page.getByLabel("Recherche dans le catalogue").fill("inceptin e2e");
-  await expect(page.getByRole("link", { name: new RegExp(FILM_TITLE) })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: new RegExp(FILM_TITLE) }),
+  ).toBeVisible();
 });
 
 test("terme inconnu propose la création", async () => {
   await page.goto("/recherche");
-  await page.getByLabel("Recherche dans le catalogue").fill(`zzz-inexistant-${S}`);
+  await page
+    .getByLabel("Recherche dans le catalogue")
+    .fill(`zzz-inexistant-${S}`);
   await expect(page.getByRole("link", { name: /Créer/ })).toBeVisible();
 });

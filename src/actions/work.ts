@@ -7,10 +7,10 @@ import { db } from "@/lib/db";
 import { requireUser, isAdmin } from "@/lib/session";
 import { normalizeTitle, slugify, splitList } from "@/lib/text";
 import { upsertPersonIds } from "@/lib/people";
-import { buildSeasons, buildTomes } from "@/lib/generators";
+import { buildSeasons } from "@/lib/generators";
 import { findDuplicateWorks, type DuplicateCandidate } from "@/lib/search";
 import { normalizeLanguage } from "@/lib/languages";
-import { WORK_TYPES, worksOwnCover } from "@/lib/media";
+import { isSerial, WORK_TYPES, worksOwnCover } from "@/lib/media";
 import type { WorkType } from "@/generated/prisma/enums";
 
 const currentYear = new Date().getFullYear();
@@ -25,6 +25,14 @@ const workSchema = z.object({
     .int()
     .min(1800, "Année invalide.")
     .max(currentYear + 5, "Année invalide."),
+  /// Œuvres sérielles seulement, et facultative : son absence déclare une
+  /// publication **en cours** (lot 6).
+  endYear: z.coerce
+    .number()
+    .int()
+    .min(1800, "Année de fin invalide.")
+    .max(currentYear + 5, "Année de fin invalide.")
+    .optional(),
   // D31 ne vaut que pour les médias qui portent leur visuel : celui d'un livre,
   // d'une BD ou d'un manga appartient à ses éditions (voir `requireCover`).
   coverImageId: z.string().optional(),
@@ -36,8 +44,24 @@ const workSchema = z.object({
   // générateurs de sous-unités
   seasonsCount: z.coerce.number().int().min(0).max(100).optional(),
   episodesPerSeason: z.coerce.number().int().min(0).max(500).optional(),
-  tomesCount: z.coerce.number().int().min(0).max(500).optional(),
+  // Pas de générateur de tomes : le nombre de volumes décrit une édition
+  // (lot 6), il se saisit sur elle.
 });
+
+/**
+ * Une série ne peut pas finir avant d'avoir commencé. Vérifié à part du champ
+ * lui-même, qui ne connaît pas l'autre.
+ */
+function checkYears<T extends { year?: number; endYear?: number }>(
+  schema: z.ZodType<T>,
+) {
+  return schema.refine((d) => !d.endYear || !d.year || d.endYear >= d.year, {
+    message: "L'année de fin doit suivre l'année de début.",
+    path: ["endYear"],
+  });
+}
+
+const createSchema = checkYears(workSchema);
 
 /** Le visuel de la fiche, ou l'erreur D31 quand le média doit en porter un. */
 function requireCover(
@@ -52,12 +76,12 @@ function requireCover(
 }
 
 /**
- * Le rôle des créateurs saisis. Un livre a des auteurs ; une BD a un
- * scénariste et un dessinateur, qu'un rôle unique trahirait — on n'en met donc
- * aucun tant que la saisie ne les distingue pas.
+ * Le rôle des créateurs saisis. Un livre et un manga ont des auteur·rice·s ;
+ * une BD a un scénariste et un dessinateur, qu'un rôle unique trahirait — on
+ * n'en met donc aucun tant que la saisie ne les distingue pas.
  */
 function creatorRole(type: WorkType): string | null {
-  return type === "BOOK" ? "auteur" : null;
+  return type === "BOOK" || type === "MANGA_SERIES" ? "auteur" : null;
 }
 
 /** FormData -> objet, en ignorant les champs vides (sinon z.coerce("") = 0). */
@@ -87,7 +111,7 @@ export async function createWork(
 ): Promise<WorkFormState | never> {
   const user = await requireUser();
 
-  const parsed = workSchema.safeParse(formToObject(formData));
+  const parsed = createSchema.safeParse(formToObject(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Champs invalides." };
   }
@@ -111,6 +135,7 @@ export async function createWork(
         titleNormalized: normalizeTitle(d.titleFr),
         originalLanguage: normalizeLanguage(d.originalLanguage),
         year: d.year,
+        endYear: isSerial(d.type) ? (d.endYear ?? null) : null,
         synopsis: d.synopsis || null,
         durationMinutes: d.durationMinutes ?? null,
         metadata,
@@ -158,16 +183,6 @@ export async function createWork(
       }
     }
 
-    if (
-      (d.type === "BD_SERIES" || d.type === "MANGA_SERIES") &&
-      (d.tomesCount ?? 0) > 0
-    ) {
-      const tomes = buildTomes(d.tomesCount!);
-      await tx.tome.createMany({
-        data: tomes.map((t) => ({ workId: created.id, number: t.number })),
-      });
-    }
-
     return created;
   });
 
@@ -184,10 +199,8 @@ export async function duplicateWork(sourceId: string): Promise<never> {
       genres: true,
       creators: true,
       seasons: { include: { episodes: true } },
-      tomes: true,
-      // Les éditions de l'œuvre — pas celles rattachées à un tome, que la
-      // copie des tomes ne rattacherait à rien.
-      editions: { where: { workId: sourceId }, include: { creators: true } },
+      // Les tomes voyagent avec leur édition (lot 6), jamais seuls.
+      editions: { include: { creators: true, tomes: true } },
     },
   });
   if (!source) redirect("/catalogue");
@@ -201,6 +214,7 @@ export async function duplicateWork(sourceId: string): Promise<never> {
         titleNormalized: normalizeTitle(`${source.titleFr} copie`),
         originalLanguage: source.originalLanguage,
         year: source.year,
+        endYear: source.endYear,
         synopsis: source.synopsis,
         durationMinutes: source.durationMinutes,
         metadata: source.metadata as object,
@@ -215,15 +229,8 @@ export async function duplicateWork(sourceId: string): Promise<never> {
             role: c.role,
           })),
         },
-        tomes: {
-          create: source.tomes.map((t) => ({
-            number: t.number,
-            title: t.title,
-            pageCount: t.pageCount,
-          })),
-        },
-        // Sans elles, la copie d'un livre naîtrait sans visuel ni pagination :
-        // tout cela vit désormais sur l'édition (lot 5).
+        // Sans elles, la copie d'une lecture naîtrait sans visuel, sans
+        // pagination et sans tome : tout cela vit sur l'édition (lots 5 et 6).
         editions: {
           create: source.editions.map((e) => ({
             title: e.title,
@@ -233,13 +240,18 @@ export async function duplicateWork(sourceId: string): Promise<never> {
             publisher: e.publisher,
             format: e.format,
             isDefault: e.isDefault,
-            coversTomeFrom: e.coversTomeFrom,
-            coversTomeTo: e.coversTomeTo,
             coverImageId: e.coverImageId,
             creators: {
               create: e.creators.map((c) => ({
                 personId: c.personId,
                 role: c.role,
+              })),
+            },
+            tomes: {
+              create: e.tomes.map((t) => ({
+                number: t.number,
+                title: t.title,
+                pageCount: t.pageCount,
               })),
             },
           })),
@@ -293,18 +305,21 @@ export async function deleteWork(
   redirect("/catalogue");
 }
 
-const editSchema = workSchema.pick({
-  titleFr: true,
-  titleOriginal: true,
-  originalLanguage: true,
-  year: true,
-  synopsis: true,
-  durationMinutes: true,
-  coverImageId: true,
-  genres: true,
-  creators: true,
-  format: true,
-});
+const editSchema = checkYears(
+  workSchema.pick({
+    titleFr: true,
+    titleOriginal: true,
+    originalLanguage: true,
+    year: true,
+    endYear: true,
+    synopsis: true,
+    durationMinutes: true,
+    coverImageId: true,
+    genres: true,
+    creators: true,
+    format: true,
+  }),
+);
 
 /** Édition d'une fiche — réservée au créateur et à l'administrateur (D30). */
 export async function editWork(
@@ -338,6 +353,10 @@ export async function editWork(
     ? d.coverImageId || work.coverImageId
     : null;
   const year = d.year ?? work.year;
+  // Seul champ que l'on peut **vider** : `formToObject` écarte les chaînes
+  // vides, donc `d.endYear ?? work.endYear` interdirait de corriger une fin
+  // saisie par erreur. Une série qui reprend redevient « en cours ».
+  const endYear = isSerial(work.type) ? (d.endYear ?? null) : null;
 
   await db.$transaction(async (tx) => {
     await tx.work.update({
@@ -351,6 +370,7 @@ export async function editWork(
         originalLanguage:
           normalizeLanguage(d.originalLanguage) ?? work.originalLanguage,
         year,
+        endYear,
         synopsis: d.synopsis ?? work.synopsis,
         durationMinutes: d.durationMinutes ?? work.durationMinutes,
         coverImageId,

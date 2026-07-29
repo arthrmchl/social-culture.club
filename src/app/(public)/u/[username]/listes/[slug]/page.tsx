@@ -8,7 +8,7 @@ import { HiddenBanner } from "@/components/social/ReviewCard";
 import { SocialFooter } from "@/components/social/SocialFooter";
 import { EmptyState } from "@/components/ui/Card";
 import { describeList } from "@/lib/lists";
-import { formatYear } from "@/lib/media";
+import { formatYears } from "@/lib/media";
 import { getComments, getPublicList, getSocialCounts } from "@/lib/social/read";
 
 type Props = { params: Promise<{ username: string; slug: string }> };
@@ -94,7 +94,7 @@ export default async function ListePubliquePage({ params }: Props) {
                   {item.work.titleFr}
                 </Link>
                 <span className="ml-2 text-xs text-muted">
-                  {formatYear(item.work.year)}
+                  {formatYears(item.work)}
                 </span>
                 {item.note && (
                   <p className="mt-0.5 text-sm text-muted">{item.note}</p>

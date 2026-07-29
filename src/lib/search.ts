@@ -10,6 +10,7 @@ export type WorkSearchResult = {
   titleFr: string;
   titleOriginal: string | null;
   year: number | null; // null pour une fiche importée sans année (lot 2)
+  endYear: number | null;
   coverImageId: string | null;
   needsCompletion: boolean;
   sim: number;
@@ -19,8 +20,8 @@ export type WorkSearchResult = {
  * Recherche interne (S1) tolérante aux fautes via pg_trgm.
  *
  * Cherche sur le titre normalisé (trigrammes) et, en secours, sur l'ISBN — qui
- * appartient à une **édition** depuis le lot 5, la sienne ou celle d'un de ses
- * tomes. Une œuvre reste donc trouvable par l'ISBN de son poche.
+ * appartient à une **édition** depuis le lot 5. Une œuvre reste donc trouvable
+ * par l'ISBN de son poche.
  */
 export async function searchWorks(
   rawQuery: string,
@@ -37,8 +38,7 @@ export async function searchWorks(
   const isbnMatch = Prisma.sql`(
     ${isbn} <> '' AND EXISTS (
       SELECT 1 FROM "Edition" e
-      LEFT JOIN "Tome" t ON t."id" = e."tomeId"
-      WHERE COALESCE(e."workId", t."workId") = w."id" AND e."isbn" = ${isbn}
+      WHERE e."workId" = w."id" AND e."isbn" = ${isbn}
     )
   )`;
 
@@ -49,6 +49,7 @@ export async function searchWorks(
       w."titleFr",
       w."titleOriginal",
       w."year",
+      w."endYear",
       w."coverImageId",
       w."needsCompletion",
       GREATEST(
@@ -72,6 +73,7 @@ export type DuplicateCandidate = {
   type: WorkType;
   titleFr: string;
   year: number | null;
+  endYear: number | null;
   coverImageId: string | null;
   sim: number;
 };
@@ -99,6 +101,7 @@ export async function findDuplicateWorks(
       w."type",
       w."titleFr",
       w."year",
+      w."endYear",
       w."coverImageId",
       similarity(w."titleNormalized", ${norm}) AS "sim"
     FROM "Work" w

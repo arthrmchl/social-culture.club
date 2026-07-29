@@ -1,9 +1,10 @@
 /**
- * Éditions et intégrales (lot 3, L6, D8) — logique pure.
+ * Éditions (lot 3, L6, D8) — logique pure.
  *
- * Le modèle `Edition` existe depuis le lot 0 ; ce fichier lui donne enfin ses
- * règles. La plus importante : une **intégrale** déclare l'étendue de tomes
- * qu'elle couvre, et lire cette édition marque ces tomes comme lus.
+ * Le modèle `Edition` existe depuis le lot 0 ; ce fichier lui donne ses règles.
+ * Depuis le lot 6, l'édition porte aussi ses **tomes** : une intégrale n'est
+ * plus une étendue déclarée sur la série, c'est une édition qui a peu de
+ * volumes.
  */
 
 import { languageLabel } from "./languages";
@@ -17,49 +18,15 @@ export type EditionLike = {
   pageCount?: number | null;
   isbn?: string | null;
   isDefault?: boolean;
-  coversTomeFrom?: number | null;
-  coversTomeTo?: number | null;
 };
 
 /**
- * Une édition qui couvre plusieurs tomes. Une borne seule suffit à la
- * déclarer : « intégrale à partir du tome 4 » reste une intention lisible,
- * même si la borne haute n'a pas été saisie.
+ * Libellé d'une édition — son titre s'il diffère, puis éditeur, format, langue,
+ * pagination et nombre de tomes, puis l'ISBN en dernier recours. Une édition
+ * dont rien n'est renseigné reste nommable : la création n'exige que son
+ * existence (D8).
  */
-export function isOmnibus(edition: EditionLike): boolean {
-  return edition.coversTomeFrom != null || edition.coversTomeTo != null;
-}
-
-/**
- * Les numéros de tomes couverts par une intégrale.
- *
- * Tolérant par construction : bornes inversées remises à l'endroit, borne
- * manquante ramenée à l'autre (une intégrale « tome 3 » couvre le seul tome 3),
- * numéros non entiers ou négatifs écartés. Une édition ordinaire ne couvre
- * rien — c'est le tome auquel elle est rattachée qui la porte.
- */
-export function coveredTomeNumbers(edition: EditionLike): number[] {
-  if (!isOmnibus(edition)) return [];
-
-  const a = edition.coversTomeFrom ?? edition.coversTomeTo;
-  const b = edition.coversTomeTo ?? edition.coversTomeFrom;
-  if (a == null || b == null) return [];
-
-  const from = Math.trunc(Math.min(a, b));
-  const to = Math.trunc(Math.max(a, b));
-  if (to < 1) return [];
-
-  const out: number[] = [];
-  for (let n = Math.max(1, from); n <= to; n++) out.push(n);
-  return out;
-}
-
-/**
- * Libellé d'une édition — son titre s'il diffère, puis éditeur, format, langue
- * et pagination, puis l'ISBN en dernier recours. Une édition dont rien n'est
- * renseigné reste nommable : la création n'exige que son existence (D8).
- */
-export function editionLabel(edition: EditionLike): string {
+export function editionLabel(edition: EditionLike, tomeCount = 0): string {
   const parts: string[] = [];
   if (edition.title?.trim()) parts.push(edition.title.trim());
   if (edition.publisher?.trim()) parts.push(edition.publisher.trim());
@@ -67,19 +34,13 @@ export function editionLabel(edition: EditionLike): string {
   const language = languageLabel(edition.language);
   if (language) parts.push(language);
   if (edition.pageCount) parts.push(`${edition.pageCount} pages`);
+  if (tomeCount > 0) {
+    parts.push(`${tomeCount} tome${tomeCount > 1 ? "s" : ""}`);
+  }
 
   if (parts.length > 0) return parts.join(" · ");
   if (edition.isbn?.trim()) return `ISBN ${edition.isbn.trim()}`;
   return "Édition sans détail";
-}
-
-/** Description de l'étendue couverte, pour l'affichage. */
-export function omnibusLabel(edition: EditionLike): string | null {
-  const tomes = coveredTomeNumbers(edition);
-  if (tomes.length === 0) return null;
-  const first = tomes[0];
-  const last = tomes[tomes.length - 1];
-  return first === last ? `Tome ${first}` : `Tomes ${first} à ${last}`;
 }
 
 /**

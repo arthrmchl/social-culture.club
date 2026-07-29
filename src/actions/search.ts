@@ -10,6 +10,7 @@ export type PickerResult = {
   type: WorkType;
   titleFr: string;
   year: number | null;
+  endYear: number | null;
   coverImageId: string | null;
 };
 
@@ -37,6 +38,7 @@ export async function searchForPicker(
     type: r.type,
     titleFr: r.titleFr,
     year: r.year,
+    endYear: r.endYear,
     coverImageId: covers.get(r.id),
   }));
 }

@@ -6,7 +6,7 @@ import { searchForPicker, type PickerResult } from "@/actions/search";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Field";
-import { MEDIA, formatYear } from "@/lib/media";
+import { MEDIA, formatYears } from "@/lib/media";
 
 /**
  * Ajout d'une œuvre à une liste, par recherche floue dans le catalogue
@@ -57,7 +57,7 @@ export function AddWorkToList({ listId }: { listId: string }) {
             >
               <span className="min-w-0 truncate text-sm">
                 {MEDIA[r.type].emoji} {r.titleFr}{" "}
-                <span className="text-muted">({formatYear(r.year)})</span>
+                <span className="text-muted">({formatYears(r)})</span>
               </span>
               <Button
                 size="sm"
